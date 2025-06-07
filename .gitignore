@@ -147,3 +147,4 @@ cython_debug/
 *.pyc
 *.pyo
 .DS_Store
+image_cache

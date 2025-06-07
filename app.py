@@ -4,6 +4,8 @@ import logging
 import os
 import sys
 
+from first import first
+
 from adapters.easyeda.easyeda_api import EasyEDAApi
 from svg_add_pad_labels import add_pad_numbers_to_svg_file
 
@@ -32,9 +34,13 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
 api = EasyEDAApi()
-lcsc_id = "C2040"
+lcsc_id = "C1530836"
 
 os.makedirs("downloads", exist_ok=True)
+
+search_results = api.search_easyeda_api(search=lcsc_id)
+print(len(search_results))
+print(first(search_results)["describe"])
 
 
 cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
