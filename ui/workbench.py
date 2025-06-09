@@ -1,4 +1,3 @@
-
 import logging
 import os
 import sys
@@ -158,7 +157,6 @@ class WorkbenchController(QObject):
         self.description_value = self.window.findChild(QLabel, "description_value")
         self.hero_view = self.window.findChild(QGraphicsView, "image_hero_view")
         
-        # --- The magic happens here: find our promoted widget ---
         self.page_Search: SearchPage = self.window.findChild(QWidget, "page_Search")
         self.page_FootprintReview: FootprintReviewPage = self.window.findChild(QWidget, "page_FootprintReview")
         
@@ -173,10 +171,6 @@ class WorkbenchController(QObject):
         self.step_labels = []
         self._promote_step_labels()
         
-        self.button_ApproveFootprint = self.window.findChild(QPushButton, "button_ApproveFootprint")
-        self.button_ApproveSymbol = self.window.findChild(QPushButton, "button_ApproveSymbol")
-        self.button_ProceedToFinalize = self.window.findChild(QPushButton, "button_ProceedToFinalize")
-        
         self._setup_hero_image()
         self.on_search_item_selected(None)
     
@@ -187,23 +181,19 @@ class WorkbenchController(QObject):
         self.hero_pixmap_item = QGraphicsPixmapItem()
         self.hero_scene.addItem(self.hero_pixmap_item)
 
-
     def _connect_signals(self):
-        # --- Connect to the clean, high-level signals from SearchPage ---
         self.page_Search.search_requested.connect(self.run_search)
         self.page_Search.item_selected.connect(self.on_search_item_selected)
         self.page_Search.item_double_clicked.connect(self.next_step)
 
-        if self.button_PreviousStep:
-            self.button_PreviousStep.clicked.connect(self.previous_step)
-        if self.button_NextStep:
-            self.button_NextStep.clicked.connect(self.next_step)
-        if self.button_ApproveFootprint:
-            self.button_ApproveFootprint.clicked.connect(self.next_step)
-        if self.button_ApproveSymbol:
-            self.button_ApproveSymbol.clicked.connect(self.next_step)
-        if self.button_ProceedToFinalize:
-            self.button_ProceedToFinalize.clicked.connect(self.next_step)
+        if self.button_PreviousStep: self.button_PreviousStep.clicked.connect(self.previous_step)
+        if self.button_NextStep: self.button_NextStep.clicked.connect(self.next_step)
+        
+        # Connect approval buttons
+        if self.page_FootprintReview:
+             approve_button = self.page_FootprintReview.findChild(QPushButton, "button_ApproveFootprint")
+             if approve_button: approve_button.clicked.connect(self.next_step)
+        # Add similar connections for other pages...
 
     def _promote_step_labels(self):
         """Replace step status labels with clickable versions"""
@@ -297,11 +287,10 @@ class WorkbenchController(QObject):
 
     def on_image_failed(self, error_message: str, image_type: str):
         logger.warning(f"Image loading failed for {image_type}: {error_message}")
-        pixmap = QPixmap()
         if image_type == "hero":
-            self.hero_pixmap_item.setPixmap(pixmap)
+            self.hero_pixmap_item.setPixmap(QPixmap()) # Clear the hero image
         elif image_type == "symbol":
-            self.page_Search.set_symbol_image(pixmap)
+            self.page_Search.set_symbol_error(error_message)
 
     def on_footprint_png_loaded(self, png_data: bytes):
         pixmap = QPixmap()
@@ -310,31 +299,41 @@ class WorkbenchController(QObject):
 
     def on_footprint_png_failed(self, error_message: str):
         logger.warning(f"Footprint PNG loading failed: {error_message}")
-        self.page_Search.set_footprint_image(QPixmap())
+        self.page_Search.set_footprint_error(error_message)
 
     def on_search_item_selected(self, result: SearchResult):
         """Handles a new item being selected in the SearchPage's tree view."""
         self.current_search_result = result
-
-        # Clear all previous images immediately on selection change
+        
+        # Clear all previous info immediately
         self.hero_pixmap_item.setPixmap(QPixmap())
-        self.page_Search.set_symbol_image(QPixmap())
-        self.page_Search.set_footprint_image(QPixmap())
+        self.page_Search.clear_images()
 
-        # Update the main context panel
         if result:
+            # Update context panel
             self.label_LcscId.setText(f"LCSC ID: {result.lcsc_id}")
             self.label_PartTitle.setText(result.part_name)
             self.mfn_value.setText(result.manufacturer)
             self.mfn_part_value.setText(result.mfr_part_number)
             self.description_value.setText(result.description)
 
-            # Request images for the newly selected part
+            # Request images and show loading indicators
             if result.image_url:
                 self.request_image.emit(result.image_url, "hero")
+            # TODO: Add hero image loading indicator
+            
+            # For now, we assume we always request a symbol and footprint
+            self.page_Search.set_symbol_loading(True)
+            self.page_Search.set_footprint_loading(True)
+            
+            # TODO: Request symbol image when available
+            # For now, we simulate an error for the symbol to test the UI
+            self.on_image_failed("Symbol not in library", "symbol")
+
             if result.lcsc_id:
                 self.request_footprint_png.emit(result.lcsc_id)
-                # TODO: Also request symbol image when available
+            else:
+                self.page_Search.set_footprint_error("LCSC ID not available")
         else:
             # Clear context panel if no item is selected
             self.label_LcscId.setText("LCSC ID: -")
