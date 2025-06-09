@@ -128,3 +128,7 @@ Component 'ESP32-C6_C5364646' serialized to LibrePCB component: /Users/fred/Libr
 Device 'ESP32-C6_C5364646' serialized to LibrePCB component: /Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/dev/a32088c9-ef07-4d14-89e4-ef39c5bac4f3/device.lp
 
 ```
+
+## Trying out the User Interface
+
+Use `uv run ui.py` to test out the search interface, with EasyEDA parts search and footprint image / hero image review
