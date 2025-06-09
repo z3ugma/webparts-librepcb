@@ -44,13 +44,17 @@ See also [IDEAS.md](IDEAS.md)
 
 # Usage
 
+It is recommended to have [`uv`](https://docs.astral.sh/uv/) installed,
+otherwise just run the scripts with `python` instead of `uv run` and
+install dependencies manually.
+
 ## Downloading EasyEDA files
 
 ```bash
 # To Download the relevant EasyEDA files
 # Modify app.py with the LCSC ID of interest
 and then run:
-python app.py
+uv run app.py
 2025-06-04 08:36:32,418 - adapters.easyeda.easyeda_api - INFO - 200 https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5
 2025-06-04 08:36:32,726 - adapters.easyeda.easyeda_api - INFO - 200 https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}
 Found 3D Model STEP file, saving...
@@ -74,7 +78,7 @@ downloads % tree
 # To convert to LibrePCB files, first have the files downloaded into downloads/
 # Modify main.py with the LCSC ID of interest
 and then run:
-python main.py
+uv run main.py
 
 === Symbol Data Structure ===
 Symbol shapes count: 43
