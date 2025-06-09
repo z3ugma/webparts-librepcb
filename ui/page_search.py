@@ -32,7 +32,7 @@ class SearchPage(QWidget):
 
         # Load the UI from the .ui file
         loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "search_page.ui")
+        ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_search.ui")
         loaded_ui = loader.load(ui_file_path, self)
 
         # Add the loaded UI to this widget's layout

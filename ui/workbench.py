@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
 
 from models.search_result import SearchResult
 from search import Search
-from search_page import SearchPage
-from footprint_review_page import FootprintReviewPage
+from .page_search import SearchPage
+from .footprint_review_page import FootprintReviewPage
 
 # Configure logging
 logging.basicConfig(

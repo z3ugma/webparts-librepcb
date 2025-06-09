@@ -11,3 +11,15 @@ dependencies = [
     "pyside6~=6.9.1",
     "requests~=2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-qt>=4.4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+markers = [
+    "ui: marks tests as UI tests",
+]

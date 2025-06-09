@@ -131,4 +131,4 @@ Device 'ESP32-C6_C5364646' serialized to LibrePCB component: /Users/fred/LibrePC
 
 ## Trying out the User Interface
 
-Use `uv run ui.py` to test out the search interface, with EasyEDA parts search and footprint image / hero image review
+Use `uv run main_ui.py` to test out the search interface, with EasyEDA parts search and footprint image / hero image review
