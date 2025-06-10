@@ -1,16 +1,19 @@
 # WebParts for LibrePCB
 
-A search tool that finds datasheets, footprints, and schematics across different web EDA vendors and imports them into LibrePCB libraries
+A component search and library management tool for LibrePCB. WebParts helps you find datasheets, footprints, and symbols from online vendors, then guides you through a review process to import them cleanly into your local LibrePCB libraries.
 
 # Project Goals
 
-The overall project goal is that a Web based library > search > copy to local > review footprints/schematics can be "the Library" workflow that solves a lot of the commentary about not enough components being available in the standard libraries of LibrePCB
+The primary goal of this project is to solve a common challenge for LibrePCB users: the difficulty of finding and importing reliable component data. By providing a streamlined workflow to search, review, and manage library parts, WebParts aims to make the process of building a personal or team library significantly easier.
 
-Serve as a companion to LibrePCB to make finding parts easier.
 In LibrePCB's forums and in GitHub issues, the opinion seems to be that there's no easy, automatic way to get a reliable online parts catalog.
 Library conversion is hard, and professional PCB designers already usually have to review online-sourced footprints. Compounding the issue is that different EDAs and PCB design softwares follow different conventions for how they label things in a schematic.
 
-# Vision
+- **Simplify Part Discovery:** Serve as a companion to LibrePCB to make finding parts easier, searching across multiple online vendors.
+- **Bridge the Gap:** Convert schematic symbols, footprints, and 3D models from various vendor formats into the native LibrePCB format.
+- **Ensure Quality:** Provide a dedicated review workflow to validate and approve new library elements before they are committed, inspired by professional PCB design practices.
+
+# Vision: The Library and Search Workflow
 
 A PySide6 and Qt6 user interface written in Python and packaged as a single .exe/binary that searches online for electronic components and finds schematics, footprints, 3D models and datasheets.
 
@@ -36,19 +39,35 @@ In the long term it would be nice to have this feature integrated in LibrePCB. T
 
 Then, the workflow UI tool is focused on search > results review > copy part into local library > review symbols for accuracy
 
-# Future
+WebParts is designed around two core concepts: **Search** and the **Library**.
 
-An extension of this could be: after an individual reviews the footprint and "approves" it, then keep a count of "approved" footprints that gets sent back to the server for a "confidence score" of how good the part is in the server library.
+- **Search:** This is the discovery phase. You can search for components across supported online vendors. The Search page provides a rich interface to view component details, including datasheets, hero images, and rendered images of the symbol and footprint. This is where you decide if a part is a good candidate for your library.
 
-See also [IDEAS.md](IDEAS.md)
+- **Library:** This is your curated collection of components. When you find a part you want to use, you add it to your Library. Parts in the library have a lifecycle and a state of review. The application will help you track which components have been fully reviewed and approved.
+
+The main user workflow is as follows:
+
+1.  **Start in the Library:** The application opens to your Library page, showing your collection of components and their review status (e.g., "Footprint Review Needed", "Approved").
+2.  **Find New Parts:** From the Library, you navigate to the Search page to find new components.
+3.  **Add to Library:** Once you've found a suitable component in the search results, you click "Add to Library". This action brings the component into your local collection and starts the review process.
+4.  **Review the Library Element:** Adding a new part takes you to the multi-step Library Element review page. Here, you'll be guided through:
+    - **Footprint Review:** Compare the generated footprint against the datasheet. Use the image of the EasyEDA footprint (Not yet possible) alongside the exported PNG image of the current LibrePCB footprint for a quick check.
+      - Display the list of pads, their signal names, and a hyperlink to the datasheet
+      - Displays any already flagged error messages from librepcb-cli
+      - If the user is happy with the footprint, they Approve it, and the app reports an approval to the central REST server to help with tracking of converted part approval
+    - **Symbol Review:** Validate the schematic symbol.
+    - **Assembly:** Map symbol pins to footprint pads.
+    - **Finalize:** Commit the approved component to your LibrePCB library file.
+
+This separation ensures that your primary library remains a clean, trusted source of components, while the search functionality provides a way to discover and import new parts.
 
 # Usage
 
-It is recommended to have [`uv`](https://docs.astral.sh/uv/) installed,
-otherwise just run the scripts with `python` instead of `uv run` and
-install dependencies manually.
+It is recommended to have [`uv`](https://docs.astral.sh/uv/) installed for managing Python environments and running scripts.
 
 ## Downloading EasyEDA files
+
+This will download the necessary JSON and SVG files into the `downloads/` directory.
 
 ```bash
 # To Download the relevant EasyEDA files
@@ -73,6 +92,8 @@ downloads % tree
 ```
 
 ## Converting to LibrePCB
+
+This will parse the downloaded data, convert it to the canonical data model, and serialize it into the `.lp` format required by LibrePCB. The output will be placed in your LibrePCB workspace.
 
 ```bash
 # To convert to LibrePCB files, first have the files downloaded into downloads/
@@ -136,3 +157,9 @@ Use `uv run main_ui.py` to test out the search interface, with EasyEDA parts sea
 ## Tests
 
 Use `uv run pytest` to run the unit tests
+
+# Future
+
+An extension of this could be a "confidence score" for community-approved parts. After a user reviews and approves a footprint or symbol, this approval could be sent to a central server, helping to build a repository of trusted, community-vetted components.
+
+See also [IDEAS.md](IDEAS.md) for more.

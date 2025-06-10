@@ -1,51 +1,31 @@
-- Put background images on cache path for footprint review
-  /Users/fred/Library/Caches/LibrePCB/LibrePCB/backgrounds/48d34c11-4c87-4378-a402-47d1ed5bc2e8/image.png
-  lives in the cache dir of https://doc.qt.io/qt-6/qstandardpaths.html
-  https://github.com/LibrePCB/LibrePCB/pull/1450
+# Future Ideas and Enhancements
 
-- Use https://librepcb.org/docs/cli/open-library/ and the SVG export to do side-by-side comparisons
+This document tracks ideas for future development, ranging from simple improvements to more complex architectural changes.
 
-- Migrate to the Entities in https://github.com/LibrePCB/librepcb-parts-generator/tree/master/entities?
-  I'm realizing I have basically reinvented the wheel for my EasyEDA serializer and will probably switch to importing these instead
+## Library Management
 
-Hard things:
+- **Persistent Library Storage:** Implement a robust way to save and load the user's library, likely using a simple database file (e.g., SQLite) or a structured JSON file.
+- **Library View:** Design and build the main Library page UI. This should include:
+  - A searchable, sortable list of all components in the library.
+  - Clear status indicators for each component (e.g., "Needs Footprint Review", "Needs Symbol Review", "Approved").
+  - The ability to filter the library by review status, component type, etc.
+- **Component Deletion:** Add the ability to remove a component from the library.
+- **Git Sync (Long Term):** Consider an optional Git integration to sync a user's library across multiple devices.
 
-- Symbols in EasyEDA can have multiple pins with the same name/net designator like you see VDDA3P3 is pads 2 and 3. In LibrePCB this would be one signal/pin mapped to both pads
-- Symbols in EasyEDA have a staggered "half grid" so you need to round up or down to get the pins to align on the symbol grid in LibrePCB
-- Package footprints in EasyEDA have a dedicated solder mask polygon layer vs the inferred solder mask & paste in LibrePCB. I am excluding those polygons for now. I wonder if there will be times where there is manually some element on the mask/paste layer that will need to translate over better
+## Review Workflow Enhancements
 
-√ EasyEDA.lplib % /Applications/LibrePCB.app/Contents/MacOS/librepcb-cli open-library --all -v --check .
+- **Side-by-Side Datasheet Viewer:** Instead of just a link, embed a PDF viewer directly within the review pages to show the component datasheet next to the footprint or symbol being reviewed.
+- **Deep Linking to LibrePCB Editor:** Investigate a way to create a button that deep-links directly to the specific library element in the user's running LibrePCB instance, making it easier to make manual corrections. Optional: Put background images on cache path for footprint review as implemented in https://github.com/LibrePCB/LibrePCB/pull/1450
+- **Checklist-Based Review:** For the footprint and symbol review steps, provide a pre-defined checklist of common things to verify (e.g., "Pin 1 orientation correct", "Pad dimensions match datasheet", "Symbol outline conforms to standard").
 
-# Review Workflow
+## Core Conversion Engine
 
-1. Enter the LCSC element you want. WebParts downloads the JSON and SVGs for that element and shows those SVGs up on the screen for confirmation dialog
-2. Confirm that's the element you wanted.
-3. Proceed with conversion of symbol, footprint, and 3D model into library elements
-4. Run the LibrePCB library element checker and grab the warning and error messages
+- **Migrate to Official Entities:** The current data models for footprints and symbols were built from scratch. The `librepcb-parts-generator` project has its own set of `entities`. We should migrate our conversion logic to use these official entities to improve compatibility and reduce maintenance.
+- **Improved Solder Mask/Paste Handling:** The current conversion for footprints excludes custom solder mask polygons from EasyEDA. A more advanced approach would be to analyze these polygons and translate them into corresponding modifications on the solder mask and paste layers in LibrePCB.
+- **Better Handling of Grid and Staggered Pins:** The conversion from EasyEDA's "half-grid" for staggered pins in symbols can be improved to produce cleaner, more consistently aligned symbols in LibrePCB.
 
-## Footprint Package
+## Community and Collaboration
 
-Have 2 windows side-by-side: the LibrePCB library element footprint editor, and the WebParts step-by-step guide window
-
-5. First, validate the footprint.
-
-- Use the image of the EasyEDA footprint
-  - (Not yet possible) alongside the exported PNG image of the current LibrePCB footprint for a quick check.
-- Display the list of pads, their signal names, and a hyperlink to the datasheet
-- Displays any already flagged error messages from librepcb-cli
-
-6. If the user is happy with the footprint, they Approve it, and the app reports an approval to the central REST server to help with tracking of converted part approval
-
-7. Else - (not yet possible) - User clicks URL that deeplinks you into the LibrePCB app and opens up the footprint library element for editing
-8. Optional: Put background images on cache path for footprint review as implemented in https://github.com/LibrePCB/LibrePCB/pull/1450
-9. Reviewer makes edits in LibrePCB and the checks re-run. Keep editing until satisfied.
-10. In the WebParts tool, click "refresh" to run the CLI element checker and image export, then indicate Approval
-
-## Symbol
-
-Repeat steps 5-10 for the schematic Symbol instead of the footprint
-
-## Component and Device
-
-11. Proceed with the autogeneration of the Component and Device
-12. Handle any duplicated signals or unconnected pads in the component and device.
+- **Confidence Score System:** Implement the "approved parts" idea. When a user approves a component, this information could be sent to a central server. The server could then provide a "confidence score" for each part, indicating how many other users have successfully vetted it.
+- **Shared Libraries:** Allow users to export their library and share it with other WebParts users.
+- **Integration with LibrePCB Parts Service:** Explore the possibility of contributing approved, high-quality components back to the official LibrePCB parts service.
