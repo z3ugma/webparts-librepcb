@@ -1,6 +1,8 @@
 import logging
 import os
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
@@ -27,12 +29,18 @@ class FootprintReviewPage(QWidget):
 
         # Find the image container widget
         self.footprint_image_container = self.findChild(QLabel, "footprint_image_container")
-        if not self.footprint_image_container:
+        if self.footprint_image_container:
+            self.footprint_image_container.setAlignment(Qt.AlignCenter)
+            self.footprint_image_container.setWordWrap(True)
+        else:
             logger.error("Could not find 'footprint_image_container' in the UI.")
 
-    def set_footprint_image(self, pixmap):
+    def set_footprint_image(self, pixmap: QPixmap):
         """
         Sets the footprint image in the container.
         """
         if self.footprint_image_container:
-            self.footprint_image_container.setPixmap(pixmap)
+            if not pixmap.isNull():
+                self.footprint_image_container.setPixmap(pixmap.scaled(self.footprint_image_container.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                self.footprint_image_container.setText("Footprint Not Available")

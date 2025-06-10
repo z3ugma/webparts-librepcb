@@ -30,6 +30,7 @@ class SearchResult(BaseModel):
     # These fields are populated after the initial search, on-demand.
     footprint_png_path: Optional[str] = Field(None, description="Absolute path to the cached footprint PNG")
     symbol_png_path: Optional[str] = Field(None, description="Absolute path to the cached symbol PNG")
+    has_3d_model: bool = Field(False, description="True if a 3D model is available")
 
     def __str__(self) -> str:
         return f"<SearchResult {self.vendor}:{self.lcsc_id} - {self.part_name}>"

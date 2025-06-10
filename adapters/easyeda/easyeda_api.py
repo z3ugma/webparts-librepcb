@@ -106,6 +106,14 @@ class EasyEDAApi(SearchEngine):
         if svg_data:
             search_result.symbol_png_path = self._generate_symbol_png_from_data(search_result.lcsc_id, svg_data)
             search_result.footprint_png_path = self._generate_footprint_png_from_data(search_result.lcsc_id, svg_data)
+            
+            # Check for 3D model
+            try:
+                footprint_svg_string = svg_data["result"][1]["svg"]
+                if "SVGNODE" in footprint_svg_string:
+                    search_result.has_3d_model = True
+            except (IndexError, KeyError, TypeError):
+                pass
         else:
             logger.warning(f"Could not fetch SVG data for {search_result.lcsc_id}. Paths will be null.")
         

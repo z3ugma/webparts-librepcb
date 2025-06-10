@@ -13,216 +13,401 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_Search" stretch="0,0,0,1">
-   <property name="spacing">
-    <number>6</number>
-   </property>
-   <property name="leftMargin">
-    <number>9</number>
-   </property>
-   <property name="topMargin">
-    <number>9</number>
-   </property>
-   <property name="rightMargin">
-    <number>9</number>
-   </property>
-   <property name="bottomMargin">
-    <number>9</number>
-   </property>
+  <layout class="QHBoxLayout" name="horizontalLayout_SearchPage" stretch="1,3">
    <item>
-    <widget class="QLabel" name="label_SearchHeader">
-     <property name="text">
-      <string>&lt;h1&gt;Find a Component&lt;/h1&gt;</string>
+    <widget class="QFrame" name="contextFrame">
+     <property name="minimumSize">
+      <size>
+       <width>250</width>
+       <height>0</height>
+      </size>
      </property>
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_Context">
+      <item>
+       <widget class="QLabel" name="label_PartTitle">
+        <property name="font">
+         <font>
+          <pointsize>14</pointsize>
+          <weight>75</weight>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>No Part Loaded</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_LcscId">
+        <property name="text">
+         <string>LCSC ID: -</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_2">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="mfn_label">
+        <property name="font">
+         <font>
+          <weight>75</weight>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>Manufacturer:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="mfn_value">
+        <property name="text">
+         <string>(select a part)</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="textInteractionFlags">
+         <set>Qt::TextSelectableByMouse</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="mfn_part_label">
+        <property name="font">
+         <font>
+          <weight>75</weight>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>Mfr. Part Number:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="mfn_part_value">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="textInteractionFlags">
+         <set>Qt::TextSelectableByMouse</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="description_label">
+        <property name="font">
+         <font>
+          <weight>75</weight>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>Description:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="description_value">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="textInteractionFlags">
+         <set>Qt::TextSelectableByMouse</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGraphicsView" name="image_hero_view">
+        <property name="toolTip">
+         <string>Pan by dragging, zoom with scroll wheel.</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>250</height>
+         </size>
+        </property>
+        <property name="dragMode">
+         <enum>QGraphicsView::ScrollHandDrag</enum>
+        </property>
+        <property name="renderHints">
+         <set>QPainter::Antialiasing|QPainter::SmoothPixmapTransform</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_datasheet">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_3dModelStatus">
+        <property name="text">
+         <string>3D Model: (Not found)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="datasheetLink">
+        <property name="text">
+         <string>Datasheet: (Not available)</string>
+        </property>
+        <property name="openExternalLinks">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </spacer>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_Search">
+    <layout class="QVBoxLayout" name="verticalLayout_Search" stretch="0,0,0,1">
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <property name="leftMargin">
+      <number>9</number>
+     </property>
+     <property name="topMargin">
+      <number>9</number>
+     </property>
+     <property name="rightMargin">
+      <number>9</number>
+     </property>
+     <property name="bottomMargin">
+      <number>9</number>
+     </property>
      <item>
-      <widget class="QLineEdit" name="searchInput">
-       <property name="placeholderText">
-        <string>e.g., C2040 or ESP32-C6</string>
+      <widget class="QLabel" name="label_SearchHeader">
+       <property name="text">
+        <string>&lt;h1&gt;Find a Component&lt;/h1&gt;</string>
        </property>
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="button_Search">
+      <layout class="QHBoxLayout" name="horizontalLayout_Search">
+       <item>
+        <widget class="QLineEdit" name="searchInput">
+         <property name="placeholderText">
+          <string>e.g., C2040 or ESP32-C6</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_Search">
+         <property name="text">
+          <string>Search</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_SearchResults">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
        <property name="text">
-        <string>Search</string>
+        <string>Search Results:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSplitter" name="search_page_splitter">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="childrenCollapsible">
+        <bool>false</bool>
+       </property>
+       <widget class="QTreeWidget" name="searchResultsTree">
+        <property name="toolTip">
+         <string>Select a result to see details below. Double-click to start the review process.</string>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>150</height>
+         </size>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>120</height>
+         </size>
+        </property>
+        <column>
+         <property name="text">
+          <string>Vendor</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Part Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>LCSC ID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Description</string>
+         </property>
+        </column>
+       </widget>
+       <widget class="QFrame" name="details_pane_frame">
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_details">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QSplitter" name="symbol_footprint_splitter">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <widget class="QWidget" name="symbol_pane" native="true">
+            <layout class="QVBoxLayout" name="verticalLayout_symbol_pane">
+             <item>
+              <widget class="QLabel" name="image_symbol_label">
+               <property name="font">
+                <font>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>Symbol Image</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="image_symbol">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>250</width>
+                 <height>250</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string>QLabel { border: 1px solid gray; background-color: #f0f0f0; }</string>
+               </property>
+               <property name="text">
+                <string>Symbol Image</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="footprint_pane" native="true">
+            <layout class="QVBoxLayout" name="verticalLayout_footprint_pane">
+             <item>
+              <widget class="QLabel" name="image_footprint_label">
+               <property name="font">
+                <font>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>Footprint Image</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="image_footprint">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>250</width>
+                 <height>250</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string>QLabel { border: 1px solid gray; background-color: #f0f0f0; }</string>
+               </property>
+               <property name="text">
+                <string>Footprint Image</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="add_to_library_button">
+       <property name="text">
+        <string>Add to Library</string>
        </property>
       </widget>
      </item>
     </layout>
-   </item>
-   <item>
-    <widget class="QLabel" name="label_SearchResults">
-     <property name="font">
-      <font>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="text">
-      <string>Search Results:</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QSplitter" name="search_page_splitter">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="childrenCollapsible">
-      <bool>false</bool>
-     </property>
-     <widget class="QTreeWidget" name="searchResultsTree">
-      <property name="toolTip">
-       <string>Select a result to see details below. Double-click to start the review process.</string>
-      </property>
-      <property name="maximumSize">
-       <size>
-        <width>16777215</width>
-        <height>150</height>
-       </size>
-      </property>
-      <property name="minimumSize">
-          <size>
-              <width>0</width>
-              <height>120</height>
-          </size>
-      </property>
-      <column>
-       <property name="text">
-        <string>Vendor</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Part Name</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>LCSC ID</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Description</string>
-       </property>
-      </column>
-     </widget>
-     <widget class="QFrame" name="details_pane_frame">
-      <property name="frameShape">
-       <enum>QFrame::StyledPanel</enum>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_details">
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
-       <item>
-        <widget class="QSplitter" name="symbol_footprint_splitter">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <widget class="QWidget" name="symbol_pane" native="true">
-          <layout class="QVBoxLayout" name="verticalLayout_symbol_pane">
-           <item>
-            <widget class="QLabel" name="image_symbol_label">
-             <property name="font">
-              <font>
-               <weight>75</weight>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string>Symbol Image</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="image_symbol">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>250</width>
-               <height>250</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string>QLabel { border: 1px solid gray; background-color: #f0f0f0; }</string>
-             </property>
-             <property name="text">
-              <string>Symbol Image</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="footprint_pane" native="true">
-          <layout class="QVBoxLayout" name="verticalLayout_footprint_pane">
-           <item>
-            <widget class="QLabel" name="image_footprint_label">
-             <property name="font">
-              <font>
-               <weight>75</weight>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string>Footprint Image</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="image_footprint">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>250</width>
-               <height>250</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string>QLabel { border: 1px solid gray; background-color: #f0f0f0; }</string>
-             </property>
-             <property name="text">
-              <string>Footprint Image</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-    </widget>
    </item>
   </layout>
  </widget>
