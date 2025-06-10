@@ -26,6 +26,7 @@ from models.search_result import SearchResult
 from search import Search
 from .page_search import SearchPage
 from .footprint_review_page import FootprintReviewPage
+from .symbol_review_page import SymbolReviewPage
 
 # Configure logging
 logging.basicConfig(
@@ -213,11 +214,12 @@ class WorkbenchController(QObject):
         
         self.page_Search: SearchPage = self.window.findChild(QWidget, "page_Search")
         self.page_FootprintReview: FootprintReviewPage = self.window.findChild(QWidget, "page_FootprintReview")
+        self.page_SymbolReview: SymbolReviewPage = self.window.findChild(QWidget, "page_SymbolReview")
         
         self.pages = [
             self.page_Search,
             self.page_FootprintReview,
-            self.window.findChild(QWidget, "page_SymbolReview"),
+            self.page_SymbolReview,
             self.window.findChild(QWidget, "page_ComponentAssembly"),
             self.window.findChild(QWidget, "page_FinalSummary"),
         ]
@@ -311,11 +313,12 @@ class WorkbenchController(QObject):
         
         self.page_Search: SearchPage = self.window.findChild(QWidget, "page_Search")
         self.page_FootprintReview: FootprintReviewPage = self.window.findChild(QWidget, "page_FootprintReview")
+        self.page_SymbolReview: SymbolReviewPage = self.window.findChild(QWidget, "page_SymbolReview")
         
         self.pages = [
             self.page_Search,
             self.page_FootprintReview,
-            self.window.findChild(QWidget, "page_SymbolReview"),
+            self.page_SymbolReview,
             self.window.findChild(QWidget, "page_ComponentAssembly"),
             self.window.findChild(QWidget, "page_FinalSummary"),
         ]
@@ -542,6 +545,7 @@ def main():
     loader = QUiLoader()
     loader.registerCustomWidget(SearchPage)
     loader.registerCustomWidget(FootprintReviewPage)
+    loader.registerCustomWidget(SymbolReviewPage)
     
     ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workbench.ui")
     window = loader.load(ui_file_path, None)
