@@ -5,7 +5,7 @@ from functools import partial
 from typing import List
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
-from PySide6.QtGui import QCursor, QPixmap, QFont
+from PySide6.QtGui import QCursor, QPixmap, QFont, QAction
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QVBoxLayout,
     QWidget,
+    QMenu,
 )
 
 from models.search_result import SearchResult
@@ -104,6 +105,58 @@ class ClickableLabel(QLabel):
         super().mousePressEvent(event)
 
 
+class SelectableLabel(QLabel):
+    """QLabel with enhanced text selection and copy functionality."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Enable text selection
+        self.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+        # Enable context menu
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+        # Add tooltip
+        self.setToolTip("Right-click to copy, or select text with mouse")
+    
+    def _show_context_menu(self, position):
+        """Show context menu with copy option."""
+        menu = QMenu(self)
+        
+        # Copy selected text action
+        copy_selected_action = QAction("Copy Selected", self)
+        copy_selected_action.triggered.connect(self._copy_selected_text)
+        copy_selected_action.setEnabled(self.hasSelectedText())
+        menu.addAction(copy_selected_action)
+        
+        # Copy all text action
+        copy_all_action = QAction("Copy All", self)
+        copy_all_action.triggered.connect(self._copy_all_text)
+        copy_all_action.setEnabled(bool(self.text().strip()))
+        menu.addAction(copy_all_action)
+        
+        # Select all text action
+        select_all_action = QAction("Select All", self)
+        select_all_action.triggered.connect(self.selectAll)
+        select_all_action.setEnabled(bool(self.text().strip()))
+        menu.addAction(select_all_action)
+        
+        # Show menu if it has enabled actions
+        if any(action.isEnabled() for action in menu.actions()):
+            menu.exec(self.mapToGlobal(position))
+    
+    def _copy_selected_text(self):
+        """Copy the currently selected text to clipboard."""
+        if self.hasSelectedText():
+            clipboard = QApplication.clipboard()
+            clipboard.setText(self.selectedText())
+    
+    def _copy_all_text(self):
+        """Copy all text to clipboard."""
+        if self.text().strip():
+            clipboard = QApplication.clipboard()
+            clipboard.setText(self.text())
+
+
 class WorkbenchController(QObject):
     request_search = Signal(str)
     request_image = Signal(str, str)
@@ -157,6 +210,104 @@ class WorkbenchController(QObject):
         self.mfn_part_value = self.window.findChild(QLabel, "mfn_part_value")
         self.description_value = self.window.findChild(QLabel, "description_value")
         self.hero_view = self.window.findChild(QGraphicsView, "image_hero_view")
+        
+        self.page_Search: SearchPage = self.window.findChild(QWidget, "page_Search")
+        self.page_FootprintReview: FootprintReviewPage = self.window.findChild(QWidget, "page_FootprintReview")
+        
+        self.pages = [
+            self.page_Search,
+            self.page_FootprintReview,
+            self.window.findChild(QWidget, "page_SymbolReview"),
+            self.window.findChild(QWidget, "page_ComponentAssembly"),
+            self.window.findChild(QWidget, "page_FinalSummary"),
+        ]
+        
+        self.step_labels = []
+        self._promote_step_labels()
+        
+        self._setup_hero_image()
+        self.on_search_item_selected(None)
+        
+        # Enable text selection on the sidebar labels
+        self._enable_text_selection()
+        
+    def _enable_text_selection(self):
+        """Enable text selection on sidebar labels for easy copying."""
+        selectable_labels = [
+            self.label_LcscId,
+            self.label_PartTitle,
+            self.mfn_value,
+            self.mfn_part_value,
+            self.description_value,
+        ]
+        
+        for label in selectable_labels:
+            if label:
+                # Enable basic text selection
+                label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+                
+                # Enable context menu for copying
+                label.setContextMenuPolicy(Qt.CustomContextMenu)
+                label.customContextMenuRequested.connect(
+                    lambda pos, lbl=label: self._show_label_context_menu(pos, lbl)
+                )
+                
+                # Add tooltip
+                label.setToolTip("Right-click to copy, or select text with mouse")
+    
+    def _show_label_context_menu(self, position, label):
+        """Show context menu for label with copy options."""
+        menu = QMenu(self.window)
+        
+        # Copy selected text action
+        copy_selected_action = QAction("Copy Selected", self.window)
+        copy_selected_action.triggered.connect(lambda: self._copy_label_text(label, selected_only=True))
+        copy_selected_action.setEnabled(label.hasSelectedText())
+        menu.addAction(copy_selected_action)
+        
+        # Copy all text action
+        copy_all_action = QAction("Copy All", self.window)
+        copy_all_action.triggered.connect(lambda: self._copy_label_text(label, selected_only=False))
+        copy_all_action.setEnabled(bool(label.text().strip()))
+        menu.addAction(copy_all_action)
+        
+        # Select all text action
+        select_all_action = QAction("Select All", self.window)
+        select_all_action.triggered.connect(lambda: self._select_all_label_text(label))
+        select_all_action.setEnabled(bool(label.text().strip()))
+        menu.addAction(select_all_action)
+        
+        # Show menu if it has enabled actions
+        if any(action.isEnabled() for action in menu.actions()):
+            menu.exec(label.mapToGlobal(position))
+    
+    def _copy_label_text(self, label, selected_only=True):
+        """Copy text from label to clipboard."""
+        if selected_only and label.hasSelectedText():
+            text = label.selectedText()
+        else:
+            text = label.text()
+        
+        if text.strip():
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            # Optional: Show a brief status message
+            self.window.statusBar().showMessage(f"Copied: {text[:50]}{'...' if len(text) > 50 else ''}", 2000)
+    
+    def _select_all_label_text(self, label):
+        """Select all text in a label (workaround since QLabel doesn't have selectAll)."""
+        # QLabel doesn't have a built-in selectAll method, but we can work around this
+        # by setting a selection through the cursor
+        if hasattr(label, 'setSelection'):
+            # Some Qt text widgets have setSelection
+            label.setSelection(0, len(label.text()))
+        else:
+            # For QLabel, we'll just copy all text directly
+            text = label.text()
+            if text.strip():
+                clipboard = QApplication.clipboard()
+                clipboard.setText(text)
+                self.window.statusBar().showMessage(f"Copied all: {text[:50]}{'...' if len(text) > 50 else ''}", 2000)
         
         self.page_Search: SearchPage = self.window.findChild(QWidget, "page_Search")
         self.page_FootprintReview: FootprintReviewPage = self.window.findChild(QWidget, "page_FootprintReview")
