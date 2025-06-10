@@ -1,19 +1,20 @@
 import os
-
+import sys
 import pytest
+
+# Add the project root to the Python path to allow for absolute imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, project_root)
+
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import QStackedWidget, QWidget
 
 from ui.footprint_review_page import FootprintReviewPage
-
-# Import the custom widget classes that should be promoted
 from ui.page_search import SearchPage
 from ui.symbol_review_page import SymbolReviewPage
 
 # Get the absolute path to the UI file
-UI_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui", "workbench.ui"
-)
+UI_FILE = os.path.join(project_root, "ui", "workbench.ui")
 
 
 @pytest.fixture

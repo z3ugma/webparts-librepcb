@@ -47,15 +47,15 @@ def add_pad_numbers_to_svg(svg_data: bytes, pads: List[Pad]) -> bytes:
         return svg_data
 
 
-def render_svg_to_png_bytes(svg_data: bytes, output_size: QSize) -> bytes:
+def render_svg_to_png_bytes(svg_data: bytes, width: int, height: int) -> bytes:
     """
     Renders SVG data to PNG byte data using CairoSVG.
     """
     try:
         return cairosvg.svg2png(
             bytestring=svg_data,
-            output_width=output_size.width(),
-            output_height=output_size.height(),
+            output_width=width,
+            output_height=height,
         )
     except Exception as e:
         logger.error(f"CairoSVG rendering failed: {e}")

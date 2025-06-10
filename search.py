@@ -1,90 +1,70 @@
 import logging
-from typing import List, Optional
-
-from PySide6.QtCore import QSize
+from functools import wraps
+from typing import Callable, Dict, List, Optional
 
 from adapters.easyeda.easyeda_api import EasyEDAApi
-from adapters.easyeda.easyeda_footprint import EasyEDAParser
-from models.footprint import Footprint
+from adapters.search_engine import SearchEngine
 from models.search_result import SearchResult
-from svg_utils import add_pad_numbers_to_svg, render_svg_to_png_bytes
 
 logger = logging.getLogger(__name__)
 
-APIS = [EasyEDAApi()]
+REGISTERED_ENGINES: Dict[str, SearchEngine] = {"LCSC": EasyEDAApi()}
+
+
+def with_engine(on_fail_return=None):
+    """
+    A decorator that finds the correct search engine based on the vendor,
+    injects it into the decorated method, and handles engine-not-found errors.
+    """
+    # The decorator takes an argument, so it needs two levels of functions.
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(self, vendor_or_result, *args, **kwargs):
+            """
+            The actual wrapper that replaces the original method.
+            It finds the vendor from the first argument.
+            """
+            if isinstance(vendor_or_result, SearchResult):
+                vendor = vendor_or_result.vendor
+            else:
+                vendor = vendor_or_result  # Assumes the first arg is the vendor string
+
+            engine = self.engines.get(vendor)
+
+            if not engine:
+                logger.error(f"No search engine registered for vendor: '{vendor}'")
+                # Return the specified default value (e.g., an empty list or None)
+                return on_fail_return() if callable(on_fail_return) else on_fail_return
+            
+            # Call the original function, injecting the found engine as the first argument
+            return func(self, engine, vendor_or_result, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class Search:
-    def __init__(self, apis=None):
-        self.apis = apis if apis is not None else APIS
+    """
+    A lean orchestrator that delegates tasks to the appropriate,
+    vendor-specific search engine using decorators to handle engine selection.
+    """
 
-    def search(self, search_term: str) -> List[SearchResult]:
-        logger.info(f"API: Searching for '{search_term}'...")
-        all_results = []
-        for api in self.apis:
-            try:
-                results = api.search_easyeda_api(search_term)
-                all_results.extend(results)
-            except Exception as e:
-                logger.error(f"Failed to search with {api.__class__.__name__}: {e}")
-        logger.info(f"API: Found {len(all_results)} results")
-        return all_results
+    def __init__(self, engines: Dict[str, SearchEngine] = None):
+        self.engines = engines if engines is not None else REGISTERED_ENGINES
 
-    def get_footprint(self, lcsc_id: str) -> Optional[Footprint]:
-        if not self.apis:
-            return None
-        api = self.apis[0]
-        component_data = api.get_component_data(lcsc_id)
-        if not component_data or "result" not in component_data:
-            return None
-        parser = EasyEDAParser()
-        return parser.parse_easyeda_json(component_data["result"])
+    @with_engine(on_fail_return=list)
+    def search(self, engine: SearchEngine, vendor: str, search_term: str) -> List[SearchResult]:
+        logger.info(f"Delegating search for '{search_term}' to {vendor} engine...")
+        # The vendor argument is passed through by the decorator but not needed here.
+        return engine.search(search_term)
 
-    def get_footprint_png_with_pads(self, lcsc_id: str) -> Optional[bytes]:
-        """
-        Gets the footprint, adds pad numbers, renders it to a PNG, and caches the result.
-        """
-        if not self.apis:
-            return None
-        api = self.apis[0]
+    @with_engine(on_fail_return=None)
+    def get_fully_hydrated_search_result(
+        self, engine: SearchEngine, search_result: SearchResult
+    ) -> Optional[SearchResult]:
+        logger.info(f"Delegating hydration for '{search_result.lcsc_id}' to {search_result.vendor} engine...")
+        return engine.get_fully_hydrated_search_result(search_result)
 
-        # Use a consistent cache key for the final PNG with pad numbers
-        png_cache_path = api._get_cache_path(f"footprint_{lcsc_id}_with_pads", "png")
-        cached_png = api._load_from_cache(png_cache_path)
-        if cached_png:
-            logger.info(f"Loaded footprint PNG from cache for {lcsc_id}")
-            return cached_png
-
-        # --- If not in cache, generate it ---
-        logger.info(f"Generating footprint PNG for {lcsc_id}...")
-        footprint_model = self.get_footprint(lcsc_id)
-        raw_svg_data = api.get_svg_data(lcsc_id)
-
-        if not footprint_model or not raw_svg_data:
-            logger.error(f"Missing data to generate footprint PNG for {lcsc_id}.")
-            return None
-
-        # Extract the SVG string from the raw data
-        svg_string = raw_svg_data.get("result", [{}])[1].get("svg")
-        if not svg_string:
-            logger.error("Could not find SVG string in API response.")
-            return None
-            
-        svg_with_pads = add_pad_numbers_to_svg(svg_string.encode('utf-8'), footprint_model.pads)
-        
-        # Render the final SVG to PNG bytes
-        png_data = render_svg_to_png_bytes(svg_with_pads, QSize(500, 500))
-
-        if png_data:
-            logger.info(f"Successfully generated footprint PNG for {lcsc_id}, saving to cache.")
-            api._save_to_cache(png_cache_path, png_data)
-            return png_data
-        
-        logger.error(f"Failed to render footprint PNG for {lcsc_id}.")
-        return None
-
-    def download_image_from_url(self, image_url: str) -> Optional[bytes]:
-        if not self.apis:
-            return None
-        api = self.apis[0]
-        return api.download_image_from_url(image_url)
+    @with_engine(on_fail_return=None)
+    def download_image_from_url(self, engine: SearchEngine, vendor: str, image_url: str) -> Optional[bytes]:
+        # The vendor argument is passed through by the decorator but not needed here.
+        return engine.download_image_from_url(image_url)
