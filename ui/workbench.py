@@ -415,6 +415,12 @@ class WorkbenchController(QObject):
         if not (0 <= index < len(self.pages) and self.pages[index] is not None):
             logger.warning(f"Invalid step index or page not found: {index}")
             return
+        # If navigating TO the FootprintReviewPage, ensure it has the latest image.
+        if self.pages[index] == self.page_FootprintReview:
+            footprint_pixmap = self.page_Search.get_footprint_pixmap()
+            if self.page_FootprintReview and footprint_pixmap:
+                self.page_FootprintReview.set_footprint_image(footprint_pixmap)
+        
         self.current_step_index = index
         self.main_stack.setCurrentWidget(self.pages[index])
         for i, label in enumerate(self.step_labels):
@@ -427,14 +433,6 @@ class WorkbenchController(QObject):
 
     def next_step(self, item_data=None):
         if self.current_search_result or item_data:
-            # If we are on the search page and moving to the next step (footprint review)
-            if self.current_step_index == 0:
-                # Get the pixmap from the search page's footprint container
-                footprint_pixmap = self.page_Search.get_footprint_pixmap()
-                # Set the pixmap on the footprint review page
-                if self.page_FootprintReview and footprint_pixmap:
-                    self.page_FootprintReview.set_footprint_image(footprint_pixmap)
-
             if self.current_step_index < len(self.pages) - 1:
                 self.go_to_step(self.current_step_index + 1)
         else:
