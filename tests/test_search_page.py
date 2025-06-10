@@ -1,8 +1,8 @@
-# /Users/fred/librepcb_search/tests/test_search_page.py
-
 import pytest
 from PySide6.QtCore import Qt
+
 from ui.page_search import SearchPage
+
 
 # The pytest.mark.ui is optional but good practice to tag UI tests
 @pytest.mark.ui
@@ -12,7 +12,7 @@ def test_search_page_initial_state(qtbot):
     """
     # 1. Create the widget under test
     search_page = SearchPage()
-    
+
     # 2. Register the widget with qtbot. This ensures it's properly closed after
     #    the test and provides a way to interact with it.
     qtbot.addWidget(search_page)
@@ -23,9 +23,16 @@ def test_search_page_initial_state(qtbot):
     assert search_page.results_tree is not None, "Results tree should exist"
 
     # 4. Assert initial properties of the widgets
-    assert search_page.search_input.placeholderText() == "e.g., C2040 or ESP32-C6", "Incorrect placeholder text"
-    assert search_page.search_button.isEnabled(), "Search button should be enabled by default"
-    assert search_page.results_tree.topLevelItemCount() == 0, "Results tree should be empty initially"
+    assert search_page.search_input.placeholderText() == "e.g., C2040 or ESP32-C6", (
+        "Incorrect placeholder text"
+    )
+    assert search_page.search_button.isEnabled(), (
+        "Search button should be enabled by default"
+    )
+    assert search_page.results_tree.topLevelItemCount() == 0, (
+        "Results tree should be empty initially"
+    )
+
 
 @pytest.mark.ui
 def test_search_interaction(qtbot):
@@ -37,7 +44,7 @@ def test_search_interaction(qtbot):
 
     # We want to check if the `search_requested` signal is emitted
     # when the button is clicked.
-    
+
     # Define the search term
     search_term = "DS2411"
 

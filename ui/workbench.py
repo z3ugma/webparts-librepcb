@@ -5,7 +5,7 @@ from functools import partial
 from typing import List
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
-from PySide6.QtGui import QCursor, QPixmap
+from PySide6.QtGui import QCursor, QPixmap, QFont
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QGraphicsScene,
     QGraphicsPixmapItem,
+    QGraphicsTextItem,
     QLabel,
     QPushButton,
     QStackedWidget,
@@ -178,8 +179,50 @@ class WorkbenchController(QObject):
         """Initializes the QGraphicsView for the hero image in the sidebar."""
         self.hero_scene = QGraphicsScene()
         self.hero_view.setScene(self.hero_scene)
+        
+        # Create pixmap item for the actual image
         self.hero_pixmap_item = QGraphicsPixmapItem()
         self.hero_scene.addItem(self.hero_pixmap_item)
+        
+        # Create text item for status messages (loading, errors, etc.)
+        self.hero_text_item = QGraphicsTextItem()
+        font = QFont()
+        font.setPointSize(12)
+        self.hero_text_item.setFont(font)
+        self.hero_text_item.setDefaultTextColor(Qt.gray)
+        self.hero_scene.addItem(self.hero_text_item)
+        
+        # Initially show "No Image" text
+        self._set_hero_text("No Image")
+
+    def _set_hero_text(self, text: str):
+        """Set text message in the hero image view and hide the pixmap."""
+        self.hero_text_item.setPlainText(text)
+        self.hero_text_item.setVisible(True)
+        self.hero_pixmap_item.setVisible(False)
+        
+        # Center the text in the view
+        self.hero_view.resetTransform()
+        self.hero_view.centerOn(self.hero_text_item)
+
+    def _set_hero_pixmap(self, pixmap: QPixmap):
+        """Set pixmap in the hero image view and hide the text."""
+        self.hero_pixmap_item.setPixmap(pixmap)
+        self.hero_pixmap_item.setVisible(True)
+        self.hero_text_item.setVisible(False)
+        
+        if pixmap.isNull() or self.hero_view.width() == 0:
+            return  # Don't try to scale if there's no image or view
+
+        # Calculate the scale factor to make the image 1.5x the view's size.
+        # We use the larger of the width or height scale factors to ensure the image always covers the view.
+        scale_w = (1.5 * self.hero_view.width()) / pixmap.width()
+        scale_h = (1.5 * self.hero_view.height()) / pixmap.height()
+        scale_factor = max(scale_w, scale_h)
+
+        self.hero_view.resetTransform()
+        self.hero_view.scale(scale_factor, scale_factor)
+        self.hero_view.centerOn(self.hero_pixmap_item)
 
     def _connect_signals(self):
         self.page_Search.search_requested.connect(self.run_search)
@@ -268,27 +311,14 @@ class WorkbenchController(QObject):
         pixmap = QPixmap()
         pixmap.loadFromData(image_data)
         if image_type == "hero":
-            self.hero_pixmap_item.setPixmap(pixmap)
-            if pixmap.isNull() or self.hero_view.width() == 0:
-                return  # Don't try to scale if there's no image or view
-
-            # Calculate the scale factor to make the image 1.5x the view's size.
-            # We use the larger of the width or height scale factors to ensure the image always covers the view.
-            scale_w = (1.5 * self.hero_view.width()) / pixmap.width()
-            scale_h = (1.5 * self.hero_view.height()) / pixmap.height()
-            scale_factor = max(scale_w, scale_h)
-
-            self.hero_view.resetTransform()
-            self.hero_view.scale(scale_factor, scale_factor)
-            self.hero_view.centerOn(self.hero_pixmap_item)
-
+            self._set_hero_pixmap(pixmap)
         elif image_type == "symbol":
             self.page_Search.set_symbol_image(pixmap)
 
     def on_image_failed(self, error_message: str, image_type: str):
         logger.warning(f"Image loading failed for {image_type}: {error_message}")
         if image_type == "hero":
-            self.hero_pixmap_item.setPixmap(QPixmap()) # Clear the hero image
+            self._set_hero_text("Image Not Available")
         elif image_type == "symbol":
             self.page_Search.set_symbol_error(error_message)
 
@@ -306,7 +336,7 @@ class WorkbenchController(QObject):
         self.current_search_result = result
         
         # Clear all previous info immediately
-        self.hero_pixmap_item.setPixmap(QPixmap())
+        self._set_hero_text("No Image")
         self.page_Search.clear_images()
 
         if result:
@@ -319,8 +349,10 @@ class WorkbenchController(QObject):
 
             # Request images and show loading indicators
             if result.image_url:
+                self._set_hero_text("Loading...")
                 self.request_image.emit(result.image_url, "hero")
-            # TODO: Add hero image loading indicator
+            else:
+                self._set_hero_text("Image Not Available")
             
             # For now, we assume we always request a symbol and footprint
             self.page_Search.set_symbol_loading(True)
