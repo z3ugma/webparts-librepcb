@@ -36,6 +36,7 @@ class SearchResult(BaseModel):
     hero_image_cache_path: Optional[str] = Field(None, exclude=True)
     symbol_png_cache_path: Optional[str] = Field(None, exclude=True)
     footprint_png_cache_path: Optional[str] = Field(None, exclude=True)
+    footprint_svg_cache_path: Optional[str] = Field(None, exclude=True)
     
     # --- Raw Data (for processing, not for saving) ---
     raw_cad_data: Optional[Dict] = Field(None, exclude=True)

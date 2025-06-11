@@ -64,6 +64,10 @@ class LibraryManager:
             new_paths["footprint_png_cache_path"] = self._copy_asset(
                 search_result.footprint_png_cache_path, pkg_dir, "footprint.png"
             )
+        if search_result.footprint_svg_cache_path:
+            new_paths["footprint_svg_cache_path"] = self._copy_asset(
+                search_result.footprint_svg_cache_path, pkg_dir, "footprint.svg"
+            )
         if search_result.hero_image_cache_path:
             new_paths["hero_image_cache_path"] = self._copy_asset(
                 search_result.hero_image_cache_path, webparts_dir, "hero.png"

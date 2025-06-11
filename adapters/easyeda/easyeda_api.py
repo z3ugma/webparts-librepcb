@@ -1,6 +1,7 @@
 # Global imports
 import json
 import logging
+from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
@@ -42,20 +43,58 @@ class EasyEDAApi(SearchEngine):
 
     def _generate_footprint_png_from_data(
         self, lcsc_id: str, svg_data: dict
-    ) -> Optional[str]:
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Generates footprint PNG and SVG with pad numbers.
+        Returns (png_path, svg_path) tuple.
+        """
+        from svg_add_pad_labels import add_pad_numbers_to_svg_file
+        
         png_cache_path = self._get_cache_path(f"footprint_{lcsc_id}", "png")
-        if png_cache_path.exists():
-            return str(png_cache_path.resolve())
+        svg_cache_path = self._get_cache_path(f"footprint_{lcsc_id}", "svg")
+        
+        if png_cache_path.exists() and svg_cache_path.exists():
+            return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
+        
         try:
             svg_string = svg_data["result"][1]["svg"]
         except (IndexError, KeyError, TypeError):
             logger.warning(f"No footprint SVG found in svg_data for {lcsc_id}.")
-            return None
-        png_data = render_svg_to_png_bytes(svg_string.encode("utf-8"), 500, 500)
+            return None, None
+        
+        # Save original SVG to a temporary file
+        temp_svg_path = self._get_cache_path(f"footprint_{lcsc_id}_temp", "svg")
+        with open(temp_svg_path, "w") as f:
+            f.write(svg_string)
+        
+        # Add pad numbers to the SVG (this creates a .text.svg file)
+        add_pad_numbers_to_svg_file(str(temp_svg_path))
+        
+        # The function creates a file with .text.svg suffix
+        labeled_svg_path = f"{temp_svg_path}.text.svg"
+        
+        # Move the labeled SVG to the final cache location
+        import shutil
+        if Path(labeled_svg_path).exists():
+            shutil.move(labeled_svg_path, svg_cache_path)
+        else:
+            # If pad numbering failed, use the original SVG
+            shutil.move(temp_svg_path, svg_cache_path)
+            logger.warning(f"Pad numbering failed for {lcsc_id}, using original SVG")
+        
+        # Clean up temp file if it still exists
+        if temp_svg_path.exists():
+            temp_svg_path.unlink()
+        
+        # Convert the labeled SVG to PNG
+        with open(svg_cache_path, "r") as f:
+            labeled_svg_content = f.read()
+        png_data = render_svg_to_png_bytes(labeled_svg_content.encode("utf-8"), 500, 500)
         if png_data:
             self._save_to_cache(png_cache_path, png_data)
-            return str(png_cache_path.resolve())
-        return None
+            return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
+        
+        return None, None
 
     def _generate_symbol_png_from_data(
         self, lcsc_id: str, svg_data: dict
@@ -149,9 +188,11 @@ class EasyEDAApi(SearchEngine):
             search_result.symbol_png_cache_path = self._generate_symbol_png_from_data(
                 search_result.lcsc_id, svg_data
             )
-            search_result.footprint_png_cache_path = self._generate_footprint_png_from_data(
+            footprint_png_path, footprint_svg_path = self._generate_footprint_png_from_data(
                 search_result.lcsc_id, svg_data
             )
+            search_result.footprint_png_cache_path = footprint_png_path
+            search_result.footprint_svg_cache_path = footprint_svg_path
 
         try:
             raw_symbol_uuid = cad_data.get("dataStr", {}).get("head", {}).get("uuid")
