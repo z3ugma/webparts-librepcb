@@ -102,7 +102,7 @@ if canonical_footprint:
     print("\n=== Serializing Footprint to LibrePCB ===")
     try:
         librepcb_serializer = LibrePCBFootprintSerializer(invert_y=True)
-        output_dir = f"/Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/pkg/{canonical_footprint.uuid}"
+        output_dir = f"~/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/pkg/{canonical_footprint.uuid}"
         os.makedirs(output_dir, exist_ok=True)
         librepcb_serializer.serialize_to_file(canonical_footprint, output_dir)
         if has_3d:
@@ -159,7 +159,7 @@ if canonical_symbol:
         symbol_serializer = LibrePCBSymbolSerializer(
             invert_y=True
         )  # Symbols typically don't need Y inversion
-        output_dir = f"/Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/sym/{canonical_symbol.uuid}"
+        output_dir = f"~/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/sym/{canonical_symbol.uuid}"
         os.makedirs(output_dir, exist_ok=True)
         symbol_serializer.serialize_to_file(canonical_symbol, output_dir)
     except Exception as e:
@@ -176,7 +176,9 @@ if canonical_symbol and canonical_footprint:
     try:
         component_serializer = LibrePCBComponentSerializer()
         new_uuid = create_derived_uuidv4(canonical_symbol.uuid, "component")
-        output_dir = f"/Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/cmp/{new_uuid}"
+        output_dir = (
+            f"~/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/cmp/{new_uuid}"
+        )
         os.makedirs(output_dir, exist_ok=True)
         component_serializer.serialize_to_file(canonical_symbol, output_dir)
     except Exception as e:
@@ -191,7 +193,9 @@ if canonical_symbol and canonical_footprint:
     try:
         device_serializer = LibrePCBDeviceSerializer()
         new_uuid = create_derived_uuidv4(canonical_symbol.uuid, "device")
-        output_dir = f"/Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/dev/{new_uuid}"
+        output_dir = (
+            f"~/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/dev/{new_uuid}"
+        )
         os.makedirs(output_dir, exist_ok=True)
         device_serializer.serialize_to_file(
             canonical_symbol, canonical_footprint, output_dir

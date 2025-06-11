@@ -148,3 +148,4 @@ cython_debug/
 *.pyo
 .DS_Store
 image_cache
+WebParts.lplib

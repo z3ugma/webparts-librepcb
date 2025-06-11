@@ -193,9 +193,13 @@ class SearchPage(QWidget):
         self.mfn_value.setText(result.manufacturer)
         self.mfn_part_value.setText(result.mfr_part_number)
         self.description_value.setText(result.description)
-        if result.image_url:
+        
+        if result.image.url:
             self._set_hero_text("Loading...")
-            self.request_image.emit(result.vendor, result.image_url, "hero")
+            self.request_image.emit(result.vendor, result.image.url, "hero")
+        elif result.hero_image_cache_path:
+            # If we have a cached path, load from there directly
+            self._set_hero_pixmap(QPixmap(result.hero_image_cache_path))
         else:
             self._set_hero_text("Image Not Available")
 

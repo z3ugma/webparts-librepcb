@@ -65,6 +65,6 @@ class Search:
         return engine.get_fully_hydrated_search_result(search_result)
 
     @with_engine(on_fail_return=None)
-    def download_image_from_url(self, engine: SearchEngine, vendor: str, image_url: str) -> Optional[bytes]:
-        # The vendor argument is passed through by the decorator but not needed here.
-        return engine.download_image_from_url(image_url)
+    def download_image_from_url(self, engine: SearchEngine, vendor: str, image_url: str) -> Optional[tuple[bytes, str]]:
+        # The vendor argument is now passed to the engine.
+        return engine.download_image_from_url(vendor, image_url)

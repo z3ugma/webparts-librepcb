@@ -1,14 +1,16 @@
 # Global imports
 import json
 import logging
-from pathlib import Path
 from typing import List, Optional
+from uuid import UUID
 
 import requests
 
-from models.search_result import SearchResult
-from svg_utils import render_svg_to_png_bytes
+from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
 from adapters.search_engine import SearchEngine
+from models.search_result import SearchResult
+from models.common_info import FootprintInfo, ImageInfo
+from svg_utils import render_svg_to_png_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,10 @@ class EasyEDAApi(SearchEngine):
             self._save_to_cache(cache_path, r.content)
             return r.json()
         return None
-        
-    def _generate_footprint_png_from_data(self, lcsc_id: str, svg_data: dict) -> Optional[str]:
+
+    def _generate_footprint_png_from_data(
+        self, lcsc_id: str, svg_data: dict
+    ) -> Optional[str]:
         png_cache_path = self._get_cache_path(f"footprint_{lcsc_id}", "png")
         if png_cache_path.exists():
             return str(png_cache_path.resolve())
@@ -53,7 +57,9 @@ class EasyEDAApi(SearchEngine):
             return str(png_cache_path.resolve())
         return None
 
-    def _generate_symbol_png_from_data(self, lcsc_id: str, svg_data: dict) -> Optional[str]:
+    def _generate_symbol_png_from_data(
+        self, lcsc_id: str, svg_data: dict
+    ) -> Optional[str]:
         png_cache_path = self._get_cache_path(f"symbol_{lcsc_id}", "png")
         if png_cache_path.exists():
             return str(png_cache_path.resolve())
@@ -69,52 +75,116 @@ class EasyEDAApi(SearchEngine):
         return None
 
     def search(self, search_term: str) -> List[SearchResult]:
-        payload = {"currentPage": 1, "pageSize": 25, "searchType": 2, "keyword": search_term}
+        payload = {
+            "currentPage": 1,
+            "pageSize": 25,
+            "searchType": 2,
+            "keyword": search_term,
+        }
         headers = self.headers.copy()
         headers["Content-Type"] = "application/json"
         r = requests.post(url=SEARCH_ENDPOINT, json=payload, headers=headers)
         if r.status_code != requests.codes.ok:
             return []
-        raw_results = r.json().get("data", {}).get("componentPageInfo", {}).get("list", [])
+        raw_results = (
+            r.json().get("data", {}).get("componentPageInfo", {}).get("list", [])
+        )
         search_results = []
         for raw_result in raw_results:
             try:
                 image_id = raw_result.get("productBigImageAccessId")
-                image_url = IMAGE_ENDPOINT.format(image_id=image_id) if image_id else None
-                search_results.append(SearchResult(
-                    vendor="LCSC",
-                    part_name=raw_result.get("componentModelEn", ""),
-                    lcsc_id=raw_result.get("componentCode", ""),
-                    description=raw_result.get("describe", ""),
-                    manufacturer=raw_result.get("componentBrandEn", ""),
-                    mfr_part_number=raw_result.get("componentModelEn", ""),
-                    full_description=raw_result.get("describe", ""),
-                    datasheet_url=raw_result.get("dataManualUrl"),
-                    image_url=image_url,
-                    package_type=raw_result.get("componentSpecificationEn"),
-                    stock_quantity=raw_result.get("stockCount", 0),
-                ))
+                image_url = (
+                    IMAGE_ENDPOINT.format(image_id=image_id) if image_id else None
+                )
+                search_results.append(
+                    SearchResult(
+                        vendor="LCSC",
+                        part_name=raw_result.get("componentModelEn", ""),
+                        lcsc_id=raw_result.get("componentCode", ""),
+                        description=raw_result.get("describe", ""),
+                        manufacturer=raw_result.get("componentBrandEn", ""),
+                        mfr_part_number=raw_result.get("componentModelEn", ""),
+                        full_description=raw_result.get("describe", ""),
+                        datasheet_url=raw_result.get("dataManualUrl"),
+                        stock_quantity=raw_result.get("stockCount", 0),
+                        image=ImageInfo(url=image_url),
+                        footprint=FootprintInfo(
+                            package_type=raw_result.get("componentSpecificationEn")
+                        ),
+                    )
+                )
             except Exception as e:
                 logger.warning(f"Failed to parse search result: {e}")
         return search_results
 
+    def get_component_cad_data(self, lcsc_id: str) -> Optional[dict]:
+        """Fetches the main CAD data blob for a component."""
+        cache_path = self._get_cache_path(f"cad_{lcsc_id}", "json")
+        cached_data = self._load_from_cache(cache_path)
+        if cached_data:
+            return json.loads(cached_data)
+
+        r = requests.get(url=API_ENDPOINT.format(lcsc_id=lcsc_id), headers=self.headers)
+        if r.status_code == 200 and r.json().get("success"):
+            cad_data = r.json().get("result")
+            self._save_to_cache(cache_path, json.dumps(cad_data).encode("utf-8"))
+            return cad_data
+        return None
+
     def get_fully_hydrated_search_result(
         self, search_result: SearchResult
     ) -> SearchResult:
+        """
+        Hydrates a search result with all necessary data, including UUIDs and asset paths.
+        """
+        cad_data = self.get_component_cad_data(search_result.lcsc_id)
+        if not cad_data:
+            logger.error(f"Could not fetch CAD data for {search_result.lcsc_id}.")
+            return search_result
+        
+        search_result.raw_cad_data = cad_data
+
         svg_data = self.get_and_cache_svg_data(search_result.lcsc_id)
-        
         if svg_data:
-            search_result.symbol_png_path = self._generate_symbol_png_from_data(search_result.lcsc_id, svg_data)
-            search_result.footprint_png_path = self._generate_footprint_png_from_data(search_result.lcsc_id, svg_data)
-            
-            # Check for 3D model
-            try:
-                footprint_svg_string = svg_data["result"][1]["svg"]
-                if "SVGNODE" in footprint_svg_string:
+            search_result.symbol_png_cache_path = self._generate_symbol_png_from_data(
+                search_result.lcsc_id, svg_data
+            )
+            search_result.footprint_png_cache_path = self._generate_footprint_png_from_data(
+                search_result.lcsc_id, svg_data
+            )
+
+        try:
+            raw_symbol_uuid = cad_data.get("dataStr", {}).get("head", {}).get("uuid")
+            raw_package_uuid = (
+                cad_data.get("packageDetail", {})
+                .get("dataStr", {})
+                .get("head", {})
+                .get("uuid")
+            )
+
+            if raw_symbol_uuid:
+                symbol_uuid_obj = UUID(raw_symbol_uuid)
+                search_result.symbol.uuid = str(symbol_uuid_obj)
+                search_result.component.uuid = str(
+                    create_derived_uuidv4(symbol_uuid_obj, "component")
+                )
+                device_uuid_obj = create_derived_uuidv4(symbol_uuid_obj, "device")
+                search_result.device.uuid = str(device_uuid_obj)
+                search_result.uuid = str(device_uuid_obj)
+
+            if raw_package_uuid:
+                package_uuid_obj = UUID(raw_package_uuid)
+                search_result.footprint.uuid = str(package_uuid_obj)
+
+        except Exception as e:
+            logger.error(f"Error extracting UUIDs for {search_result.lcsc_id}: {e}", exc_info=True)
+
+        try:
+            if cad_data.get("packageDetail", {}).get("dataStr", {}).get("shape"):
+                shapes = cad_data["packageDetail"]["dataStr"]["shape"]
+                if any(s.startswith("SVGNODE") for s in shapes):
                     search_result.has_3d_model = True
-            except (IndexError, KeyError, TypeError):
-                pass
-        else:
-            logger.warning(f"Could not fetch SVG data for {search_result.lcsc_id}. Paths will be null.")
-        
+        except Exception:
+            pass
+
         return search_result

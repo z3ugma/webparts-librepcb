@@ -50,27 +50,26 @@ class SearchEngine(ABC):
         except Exception as e:
             logger.warning(f"Failed to save cache file {cache_path}: {e}")
 
-    def _download_with_cache(self, url: str, file_type: str) -> Optional[bytes]:
-        cache_path = self._get_cache_path(url, file_type)
-        cached_data = self._load_from_cache(cache_path)
-        if cached_data:
-            return cached_data
-        try:
-            headers = {"User-Agent": "WebParts/0.1"}
-            response = requests.get(url, headers=headers)
-            if response.status_code == requests.codes.ok:
-                data = response.content
-                self._save_to_cache(cache_path, data)
-                return data
-        except Exception as e:
-            logger.error(f"Error downloading {url}: {e}")
-        return None
-
-    def download_image_from_url(self, image_url: str) -> Optional[bytes]:
+    def download_image_from_url(self, vendor: str, image_url: str) -> Optional[tuple[bytes, str]]:
         if not image_url:
             return None
         # Use pathlib for robust path manipulation
         path = Path(urlparse(image_url).path)
         file_ext = path.suffix
         file_type = file_ext[1:].lower() if file_ext else "jpg"
-        return self._download_with_cache(image_url, file_type)
+        
+        cache_path = self._get_cache_path(image_url, file_type)
+        cached_data = self._load_from_cache(cache_path)
+        if cached_data:
+            return cached_data, str(cache_path.resolve())
+            
+        try:
+            headers = {"User-Agent": "WebParts/0.1"}
+            response = requests.get(image_url, headers=headers)
+            if response.status_code == requests.codes.ok:
+                data = response.content
+                self._save_to_cache(cache_path, data)
+                return data, str(cache_path.resolve())
+        except Exception as e:
+            logger.error(f"Error downloading {image_url}: {e}")
+        return None

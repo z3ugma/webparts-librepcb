@@ -1,5 +1,6 @@
 """
-Defines the canonical data model for a component search result.
+Defines the canonical data model for a component that has been saved
+to the user's local library.
 """
 from typing import Optional, Dict
 from pydantic import BaseModel, Field
@@ -7,9 +8,14 @@ from .common_info import (
     ImageInfo, SymbolInfo, FootprintInfo, ComponentInfo, DeviceInfo
 )
 
-class SearchResult(BaseModel):
+class LibraryPart(BaseModel):
+    """
+    Represents a single, atomic component saved in the user's library.
+    Its source of truth is the set of files within the .lplib directory.
+    It does not store file paths, as they are derived at runtime based on convention.
+    """
     # Core identifying information
-    uuid: Optional[str] = Field(None)
+    uuid: str = Field(description="Primary key for the part, equivalent to device_uuid")
     vendor: str
     part_name: str
     lcsc_id: str
@@ -31,15 +37,5 @@ class SearchResult(BaseModel):
     component: ComponentInfo = Field(default_factory=ComponentInfo)
     device: DeviceInfo = Field(default_factory=DeviceInfo)
 
-    # --- Transient, UI-specific fields ---
-    # These hold temporary cache paths for the UI and are excluded from any serialization.
-    hero_image_cache_path: Optional[str] = Field(None, exclude=True)
-    symbol_png_cache_path: Optional[str] = Field(None, exclude=True)
-    footprint_png_cache_path: Optional[str] = Field(None, exclude=True)
-    
-    # --- Raw Data (for processing, not for saving) ---
-    raw_cad_data: Optional[Dict] = Field(None, exclude=True)
-    has_3d_model: bool = Field(False, exclude=True)
-
-    def to_dict(self):
-        return self.model_dump(exclude_none=True)
+    # --- Hydrated Fields ---
+    has_3d_model: bool = Field(False)

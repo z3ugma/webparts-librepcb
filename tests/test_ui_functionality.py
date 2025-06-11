@@ -57,12 +57,14 @@ class TestSearchPageBehavior:
 
     def test_set_details(self, search_page: SearchPage, qtbot: QtBot):
         """Test that component details are correctly displayed in the sidebar."""
+        from models.common_info import ImageInfo
+        
         result = SearchResult(
             vendor="LCSC", part_name="Test Part", lcsc_id="C123",
             description="Desc", manufacturer="Mfr", mfr_part_number="TP-01",
             full_description="Full Desc", has_3d_model=True,
             datasheet_url="http://example.com/datasheet.pdf",
-            image_url="http://example.com/image.png"
+            image=ImageInfo(url="http://example.com/image.png")
         )
         
         with qtbot.wait_signal(search_page.request_image) as blocker:
