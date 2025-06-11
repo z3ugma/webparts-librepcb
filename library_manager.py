@@ -8,7 +8,7 @@ LibraryPart objects and saving them to the .lplib directory structure.
 import json
 import shutil
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
@@ -24,6 +24,7 @@ class LibraryManager:
         self.library_path = library_path
         self.webparts_dir = self.library_path / "webparts"
         self.pkg_dir = self.library_path / "pkg"
+        # self.sym_dir = self.library_path / "sym" # For future use
 
     def part_exists(self, part_uuid: str) -> bool:
         """Checks if a part manifest already exists in the library."""
@@ -32,10 +33,11 @@ class LibraryManager:
         manifest_path = self.webparts_dir / part_uuid / "part.wp"
         return manifest_path.exists()
 
-    def add_part_from_search_result(self, search_result: SearchResult) -> LibraryPart:
+    def add_part_from_search_result(self, search_result: SearchResult) -> Dict[str, str]:
         """
-        Converts a SearchResult, saves it, and returns the LibraryPart object.
+        Converts a SearchResult, saves it, and returns the new permanent asset paths.
         """
+        # Convert the SearchResult to a LibraryPart object, preserving nested models.
         library_part = self._map_search_result_to_library_part(search_result)
 
         part_webparts_dir = self.webparts_dir / library_part.uuid
@@ -49,11 +51,37 @@ class LibraryManager:
         self._create_manifests(library_part, part_pkg_dir)
 
         print(f"Successfully added part {library_part.lcsc_id} to library.")
-        return library_part
+        # Return the dictionary of new permanent paths
+        return new_paths
+
+    def get_all_parts(self) -> list[LibraryPart]:
+        """Scans the library and returns a list of all parts."""
+        parts = []
+        if not self.webparts_dir.exists():
+            return parts
+        for part_dir in self.webparts_dir.iterdir():
+            if part_dir.is_dir():
+                manifest_path = part_dir / "part.wp"
+                if manifest_path.exists():
+                    try:
+                        with open(manifest_path, "r") as f:
+                            part_data = json.load(f)
+                            parts.append(LibraryPart.model_validate(part_data))
+                    except (json.JSONDecodeError, TypeError) as e:
+                        print(f"Error loading part manifest {manifest_path}: {e}")
+        return parts
+
 
     def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
-        return LibraryPart.model_validate(search_result.model_dump())
+        # Convert SearchResult to dict, then validate as LibraryPart
+        search_dict = search_result.model_dump()
+        
+        # Ensure UUID is set (LibraryPart requires it, SearchResult allows None)
+        if not search_dict.get('uuid'):
+            search_dict['uuid'] = search_result.uuid or f"search-{search_result.lcsc_id}"
+        
+        return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(
         self, search_result: SearchResult, pkg_dir: Path, webparts_dir: Path
@@ -64,8 +92,9 @@ class LibraryManager:
             new_paths["footprint_png_cache_path"] = self._copy_asset(
                 search_result.footprint_png_cache_path, pkg_dir, "footprint.png"
             )
+        # Also copy the SVG if it exists, although we don't track its path in the result model
         if search_result.footprint_svg_cache_path:
-            new_paths["footprint_svg_cache_path"] = self._copy_asset(
+             self._copy_asset(
                 search_result.footprint_svg_cache_path, pkg_dir, "footprint.svg"
             )
         if search_result.hero_image_cache_path:

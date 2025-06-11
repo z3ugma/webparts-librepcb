@@ -135,13 +135,16 @@ class WorkbenchController(QObject):
         }
 
     def _connect_signals(self):
+        # Library page signals
         self.page_Library.go_to_search_requested.connect(self.go_to_search)
+        self.page_Library.edit_part_requested.connect(self.on_library_edit_requested)
+        
+        # Search page signals
         self.page_Search.search_requested.connect(self.run_search)
         self.page_Search.item_selected.connect(self.on_search_item_selected)
-        self.page_Search.add_to_library_requested.connect(
-            self.on_add_to_library_requested
-        )
+        self.page_Search.add_to_library_requested.connect(self.on_add_to_library_requested)
         self.page_Search.request_image.connect(self.on_request_image)
+        self.page_Search.back_to_library_requested.connect(self.go_to_library)
 
     def on_add_to_library_requested(self):
         if not self.current_search_result:
@@ -174,6 +177,9 @@ class WorkbenchController(QObject):
             self.window.statusBar().showMessage(
                 f"Successfully added '{part_name}' to library!", 4000
             )
+            # Refresh the library page to show the new part
+            if hasattr(self.page_Library, 'refresh_library'):
+                self.page_Library.refresh_library()
         except Exception as e:
             logger.error(f"Failed to add part to library: {e}", exc_info=True)
             self.window.statusBar().showMessage(f"Error adding to library: {e}", 5000)
@@ -190,6 +196,35 @@ class WorkbenchController(QObject):
         self.window.statusBar().showMessage("Search", 2000)
 
     def go_to_library_element(self):
+        if hasattr(self.page_LibraryElement, 'cleanup'):
+            self.page_LibraryElement.cleanup()
+        # Simply switch to the LibraryElementPage; details have been set by on_library_review_requested
+        self.main_stack.setCurrentWidget(self.pages['library_element'])
+        self.window.statusBar().showMessage('Entering review workflow', 2000)
+
+    def on_library_edit_requested(self, part: LibraryPart):
+        """
+        Handle edit request from LibraryPage: switch to LibraryElementPage with the given part
+        """
+        try:
+            # LibraryPage provides the full LibraryPart object
+            if hasattr(self.page_LibraryElement, 'set_component'):
+                self.page_LibraryElement.set_component(part)
+            elif hasattr(self.page_LibraryElement, 'set_part'):
+                self.page_LibraryElement.set_part(part)
+            
+            # Start at the first step (footprint review)
+            if hasattr(self.page_LibraryElement, 'go_to_step'):
+                self.page_LibraryElement.go_to_step(0)
+            
+            # Switch to the LibraryElementPage
+            self.main_stack.setCurrentWidget(self.pages["library_element"])
+            self.window.statusBar().showMessage(f"Editing {part.part_name}", 2000)
+            
+        except Exception as e:
+            logger.error(f"Error opening edit for part {getattr(part, 'part_name', 'unknown')}: {e}")
+            self.window.statusBar().showMessage("Failed to open edit page", 3000)
+
         if self.current_search_result:
             self.page_LibraryElement.set_component(self.current_search_result)
             self.main_stack.setCurrentWidget(self.pages["library_element"])

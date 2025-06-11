@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from models.search_result import SearchResult
+from models.library_part import LibraryPart
 from search import Search
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
@@ -147,22 +148,73 @@ class LibraryElementPage(QWidget):
         self.button_PreviousStep.clicked.connect(self.previous_step)
         self.button_NextStep.clicked.connect(self.next_step)
 
-    def set_component(self, component: SearchResult):
+    def set_component(self, component):
+        """Set component data - handles both SearchResult and LibraryPart objects"""
         self.component = component
+        
+        # Handle different object types
+        if hasattr(component, 'image_url'):
+            # SearchResult object
+            self._set_component_searchresult(component)
+        else:
+            # LibraryPart object
+            self._set_component_librarypart(component)
+        
+        self.go_to_step(0)
+    
+    def _set_component_searchresult(self, component):
+        """Handle SearchResult objects"""
         self.label_LcscId.setText(f"LCSC ID: {component.lcsc_id}")
         self.label_PartTitle.setText(component.part_name)
         self.mfn_value.setText(component.manufacturer)
         self.mfn_part_value.setText(component.mfr_part_number)
         self.description_value.setText(component.description)
+        
         if component.image_url:
             self._set_hero_text("Loading...")
             self.request_image.emit(component.vendor, component.image_url, "hero")
         else:
             self._set_hero_text("Image Not Available")
             
-        self.page_FootprintReview.set_footprint_image(QPixmap(component.footprint_png_path) if component.footprint_png_path else QPixmap())
-        self.page_SymbolReview.set_symbol_image(QPixmap(component.symbol_png_path) if component.symbol_png_path else QPixmap())
-        self.go_to_step(0)
+        self.page_FootprintReview.set_footprint_image(
+            QPixmap(component.footprint_png_path) if component.footprint_png_path else QPixmap()
+        )
+        self.page_SymbolReview.set_symbol_image(
+            QPixmap(component.symbol_png_path) if component.symbol_png_path else QPixmap()
+        )
+    
+    def _set_component_librarypart(self, part):
+        """Handle LibraryPart objects"""
+        from library_manager import LibraryManager
+        manager = LibraryManager()
+        
+        self.label_LcscId.setText(f"LCSC ID: {part.lcsc_id}")
+        self.label_PartTitle.setText(part.part_name)
+        self.mfn_value.setText(part.manufacturer)
+        self.mfn_part_value.setText(part.mfr_part_number)
+        self.description_value.setText(part.description)
+        
+        # Load hero image if it exists
+        hero_path = manager.webparts_dir / part.uuid / "hero.png"
+        if hero_path.exists():
+            pixmap = QPixmap(str(hero_path))
+            if not pixmap.isNull():
+                self._set_hero_pixmap(pixmap)
+            else:
+                self._set_hero_text("Image Not Available")
+        else:
+            self._set_hero_text("Image Not Available")
+        
+        # Load footprint and symbol images from library paths
+        footprint_path = manager.pkg_dir / part.footprint.uuid / "footprint.png"
+        symbol_path = manager.webparts_dir / part.uuid / "symbol.png"  # Assuming symbol images are stored here
+        
+        self.page_FootprintReview.set_footprint_image(
+            QPixmap(str(footprint_path)) if footprint_path.exists() else QPixmap()
+        )
+        self.page_SymbolReview.set_symbol_image(
+            QPixmap(str(symbol_path)) if symbol_path.exists() else QPixmap()
+        )
 
     def on_image_loaded(self, image_data: bytes, image_type: str):
         pixmap = QPixmap()
@@ -192,3 +244,9 @@ class LibraryElementPage(QWidget):
 
     def cleanup(self):
         if self.image_thread.isRunning(): self.image_thread.quit(); self.image_thread.wait()
+
+    def cleanup(self):
+        # ensure threads are cleaned
+        if hasattr(self, 'image_thread') and self.image_thread.isRunning():
+            self.image_thread.quit()
+            self.image_thread.wait()

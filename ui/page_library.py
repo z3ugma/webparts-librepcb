@@ -1,21 +1,385 @@
 import os
-from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout
+import logging
+from typing import List
+
+from PySide6.QtCore import Qt, QThread, Signal, QObject
+from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtWidgets import (
+    QWidget, QTreeWidget, QTreeWidgetItem, QLabel, QPushButton,
+    QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
+)
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import Signal
+
+from library_manager import LibraryManager
+from models.library_part import LibraryPart
+
+logger = logging.getLogger(__name__)
+
+
+class LibraryTreeWidget(QTreeWidget):
+    """Custom QTreeWidget that can detect clicks in empty areas"""
+    clicked_empty_area = Signal()
+    
+    def mousePressEvent(self, event):
+        # Check if click is on an actual item
+        item = self.itemAt(event.position().toPoint())
+        if item is None:
+            # Click was in empty area
+            self.clearSelection()
+            self.setCurrentItem(None)
+            self.clicked_empty_area.emit()
+        super().mousePressEvent(event)
+
+
+class LibraryPartLite:
+    """Lightweight summary of a LibraryPart for fast loading."""
+    __slots__ = ("uuid", "part_name", "lcsc_id", "status_flags", "hero_path")
+
+    def __init__(self, uuid: str, part_name: str, lcsc_id: str, status_flags: dict, hero_path: str):
+        self.uuid = uuid
+        self.part_name = part_name
+        self.lcsc_id = lcsc_id
+        self.status_flags = status_flags
+        self.hero_path = hero_path
+
+
+class LibraryLoaderWorker(QObject):
+    parts_loaded = Signal(list)
+    load_failed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.manager = LibraryManager()
+
+    def load_parts(self):
+        try:
+            parts_lite = []
+            for part in self.manager.get_all_parts():
+                flags = {
+                    "footprint": bool(part.footprint.uuid),
+                    "symbol": bool(part.symbol.uuid),
+                    "component": bool(part.component.uuid),
+                    "device": bool(part.device.uuid),
+                }
+                hero = os.path.join(self.manager.webparts_dir, part.uuid, "hero.png")
+                parts_lite.append(LibraryPartLite(part.uuid, part.part_name, part.lcsc_id, flags, hero))
+            self.parts_loaded.emit(parts_lite)
+        except Exception as e:
+            logger.error("Library loading failed", exc_info=True)
+            self.load_failed.emit(str(e))
+
+
+class PartHydratorWorker(QObject):
+    hydration_ready = Signal(object)
+    hydration_failed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.manager = LibraryManager()
+
+    def hydrate(self, lite: LibraryPartLite):
+        try:
+            all_parts = self.manager.get_all_parts()
+            part = next((p for p in all_parts if p.uuid == lite.uuid), None)
+            if not part:
+                raise FileNotFoundError(f"Part manifest not found: {lite.uuid}")
+            
+            # Load hero image
+            pixmap = QPixmap()
+            if lite.hero_path and os.path.exists(lite.hero_path):
+                pixmap.load(lite.hero_path)
+            part._hero_pixmap = pixmap
+            self.hydration_ready.emit((lite, part))
+        except Exception as e:
+            logger.error("Part hydration failed", exc_info=True)
+            self.hydration_failed.emit(str(e))
+
+
 
 class LibraryPage(QWidget):
     go_to_search_requested = Signal()
+    edit_part_requested = Signal(object)  # LibraryPart object
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # Load UI
         loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_library.ui")
-        loaded_ui = loader.load(ui_file_path, self)
+        ui_file = os.path.join(os.path.dirname(__file__), "page_library.ui")
+        ui = loader.load(ui_file, self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(loaded_ui)
+        layout.addWidget(ui)
 
-        self.go_to_search_button = self.findChild(QPushButton, "go_to_search_button")
-        if self.go_to_search_button:
-            self.go_to_search_button.clicked.connect(self.go_to_search_requested)
+        # Find widgets
+        self.tree: QTreeWidget = ui.findChild(QTreeWidget, "libraryTree")
+        self.search_button: QPushButton = ui.findChild(QPushButton, "go_to_search_button")
+        self.edit_part_button: QPushButton = ui.findChild(QPushButton, "edit_part_button")
+        self.hero_view: QGraphicsView = ui.findChild(QGraphicsView, "image_hero_view")
+        
+        # Replace the standard QTreeWidget with our custom one
+        if self.tree:
+            # Create custom tree widget
+            custom_tree = LibraryTreeWidget()
+            custom_tree.setObjectName("libraryTree")
+            
+            # Copy properties from the original tree
+            custom_tree.setHeaderLabels(["Part", "Footprint", "Symbol", "Component", "Device"])
+            custom_tree.setColumnCount(5)
+            
+            # Replace in layout
+            parent_layout = self.tree.parentWidget().layout()
+            tree_index = parent_layout.indexOf(self.tree)
+            parent_layout.insertWidget(tree_index, custom_tree)
+            parent_layout.removeWidget(self.tree)
+            self.tree.deleteLater()
+            self.tree = custom_tree
+        
+        self.detail_labels = {
+            'lcsc': ui.findChild(QLabel, 'label_LcscId'),
+            'title': ui.findChild(QLabel, 'label_PartTitle'),
+            'mfn': ui.findChild(QLabel, 'mfn_value'),
+            'mfn_part': ui.findChild(QLabel, 'mfn_part_value'),
+            'desc': ui.findChild(QLabel, 'description_value'),
+        }
+        
+        # Additional labels for complete sidebar
+        self.label_3dModelStatus = ui.findChild(QLabel, 'label_3dModelStatus')
+        self.datasheetLink = ui.findChild(QLabel, 'datasheetLink')
+
+        # Remove the old step label replacement code since we no longer have step labels
+        # Instead we have the Edit Part button
+
+        # Setup hero graphics view
+        self.hero_scene = QGraphicsScene()
+        self.hero_view.setScene(self.hero_scene)
+        self.hero_item = QGraphicsPixmapItem()
+        self.hero_scene.addItem(self.hero_item)
+        self.hero_text = QGraphicsTextItem()
+        font = QFont()
+        font.setPointSize(12)
+        self.hero_text.setFont(font)
+        self.hero_scene.addItem(self.hero_text)
+        self._show_hero_text("No Part Selected")
+
+        # Background loader thread
+        self.loader_thread = QThread()
+        self.loader_worker = LibraryLoaderWorker()
+        self.loader_worker.moveToThread(self.loader_thread)
+        self.loader_worker.parts_loaded.connect(self.on_parts_loaded)
+        self.loader_worker.load_failed.connect(lambda err: logger.error(f"Load failed: {err}"))
+        self.loader_thread.started.connect(self.loader_worker.load_parts)
+
+        # Hydration thread
+        self.hydrator_thread = QThread()
+        self.hydrator_worker = PartHydratorWorker()
+        self.hydrator_worker.moveToThread(self.hydrator_thread)
+        self.hydrator_worker.hydration_ready.connect(self.on_hydration_ready)
+        self.hydrator_worker.hydration_failed.connect(lambda err: logger.error(f"Hydration failed: {err}"))
+        self.hydrator_thread.start()
+
+        # Connect signals
+        if self.search_button:
+            self.search_button.clicked.connect(self.go_to_search_requested)
+        if self.edit_part_button:
+            self.edit_part_button.clicked.connect(self.on_edit_part_clicked)
+        if self.tree:
+            self.tree.currentItemChanged.connect(self.on_tree_selection_changed)
+            # Connect our custom empty area click signal
+            if hasattr(self.tree, 'clicked_empty_area'):
+                self.tree.clicked_empty_area.connect(self.on_empty_area_clicked)
+
+        # Current selected part (full LibraryPart for review requests)
+        self.current_selected_part = None
+
+        # Start loading library
+        self.refresh_library()
+
+    def refresh_library(self):
+        """Reload the library from disk"""
+        if not self.loader_thread.isRunning():
+            self.loader_thread.start()
+
+    def clear_selection(self):
+        """Clear the current selection and return to initial state"""
+        self.current_selected_part = None
+        self._show_hero_text("Select a part to view details")
+        for lbl in self.detail_labels.values():
+            if lbl:
+                lbl.setText("")
+        if self.detail_labels['title']:
+            self.detail_labels['title'].setText("No Part Selected")
+        if self.detail_labels['mfn']:
+            self.detail_labels['mfn'].setText("(select a part)")
+        if self.label_3dModelStatus:
+            self.label_3dModelStatus.setText("3D Model: (Not found)")
+        if self.datasheetLink:
+            self.datasheetLink.setText('Datasheet: <a href="#">(Not available)</a>')
+        if self.edit_part_button:
+            self.edit_part_button.setEnabled(False)
+
+    def _show_hero_text(self, text: str):
+        self.hero_text.setPlainText(text)
+        self.hero_text.setVisible(True)
+        self.hero_item.setVisible(False)
+        self.hero_view.resetTransform()
+        self.hero_view.centerOn(self.hero_text)
+
+    def _show_hero_pixmap(self, pixmap: QPixmap):
+        if pixmap.isNull():
+            self._show_hero_text("No Image")
+            return
+            
+        self.hero_item.setPixmap(pixmap)
+        self.hero_item.setVisible(True)
+        self.hero_text.setVisible(False)
+        self.hero_view.resetTransform()
+        
+        # Scale to fit view with 1.5x zoom
+        view_rect = self.hero_view.viewport().rect()
+        if view_rect.width() > 0 and view_rect.height() > 0:
+            scale_factor = min(
+                (view_rect.width() * 1.5) / pixmap.width(),
+                (view_rect.height() * 1.5) / pixmap.height()
+            )
+            self.hero_view.scale(scale_factor, scale_factor)
+        
+        self.hero_view.centerOn(self.hero_item)
+
+    def on_parts_loaded(self, parts_lite: List[LibraryPartLite]):
+        """Populate tree with loaded parts"""
+        self.tree.clear()
+        for lite in parts_lite:
+            item = QTreeWidgetItem([lite.part_name, "", "", "", ""])
+            item.setData(0, Qt.UserRole, lite)
+            
+            # Set status icons
+            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
+                val = lite.status_flags.get(key, False)
+                item.setText(col, '✔' if val else '✘')
+            
+            self.tree.addTopLevelItem(item)
+        
+        # Stop loader thread
+        self.loader_thread.quit()
+
+    def on_tree_selection_changed(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
+        """Handle tree selection change"""
+        if current:
+            lite: LibraryPartLite = current.data(0, Qt.UserRole)
+            self._show_hero_text("Loading...")
+            
+            # Clear details
+            for lbl in self.detail_labels.values():
+                if lbl:
+                    lbl.setText("")
+            
+            # Clear additional fields
+            if self.label_3dModelStatus:
+                self.label_3dModelStatus.setText("3D Model: (Loading...)")
+            if self.datasheetLink:
+                self.datasheetLink.setText('Datasheet: <a href="#">(Loading...)</a>')
+            
+            # Disable edit button while loading
+            if self.edit_part_button:
+                self.edit_part_button.setEnabled(False)
+            
+            # Request hydration
+            self.hydrator_worker.hydrate(lite)
+        else:
+            # No selection - return to initial state
+            self.clear_selection()
+
+    def on_hydration_ready(self, data: tuple):
+        """Handle completed hydration"""
+        lite, part = data
+        self.current_selected_part = part
+        
+        # Show hero image
+        pixmap = getattr(part, '_hero_pixmap', None)
+        if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+            self._show_hero_pixmap(pixmap)
+        else:
+            self._show_hero_text("No Image")
+        
+        # Fill details
+        if self.detail_labels['lcsc']:
+            self.detail_labels['lcsc'].setText(f"LCSC ID: {part.lcsc_id}")
+        if self.detail_labels['title']:
+            self.detail_labels['title'].setText(part.part_name)
+        if self.detail_labels['mfn']:
+            self.detail_labels['mfn'].setText(part.manufacturer)
+        if self.detail_labels['mfn_part']:
+            self.detail_labels['mfn_part'].setText(part.mfr_part_number)
+        if self.detail_labels['desc']:
+            self.detail_labels['desc'].setText(part.description)
+        
+        # Update 3D model status
+        if self.label_3dModelStatus:
+            if part.has_3d_model:
+                self.label_3dModelStatus.setText("3D Model: Found")
+            else:
+                self.label_3dModelStatus.setText("3D Model: Not Found")
+        
+        # Update datasheet link
+        if self.datasheetLink:
+            if part.datasheet_url:
+                self.datasheetLink.setText(f'<a href="{part.datasheet_url}">Open Datasheet</a>')
+            else:
+                self.datasheetLink.setText("Datasheet: Not Available")
+        
+        # Update row icons based on actual part data
+        items = self.tree.selectedItems()
+        if items:
+            item = items[0]
+            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
+                val = bool(getattr(part, key).uuid)
+                item.setText(col, '✔' if val else '✘')
+        
+        # Highlight first step
+        self._highlight_step(0)
+        
+        # Fill details
+        if self.detail_labels['lcsc']:
+            self.detail_labels['lcsc'].setText(f"LCSC ID: {part.lcsc_id}")
+        if self.detail_labels['title']:
+            self.detail_labels['title'].setText(part.part_name)
+        if self.detail_labels['mfn']:
+            self.detail_labels['mfn'].setText(part.manufacturer)
+        if self.detail_labels['mfn_part']:
+            self.detail_labels['mfn_part'].setText(part.mfr_part_number)
+        if self.detail_labels['desc']:
+            self.detail_labels['desc'].setText(part.description)
+        
+        # Update row icons based on actual part data
+        items = self.tree.selectedItems()
+        if items:
+            item = items[0]
+            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
+                val = bool(getattr(part, key).uuid)
+                item.setText(col, '✔' if val else '✘')
+        
+        # Enable edit button now that part is loaded
+        if self.edit_part_button:
+            self.edit_part_button.setEnabled(True)
+
+    def on_empty_area_clicked(self):
+        """Handle clicks in empty area of tree - deselect everything"""
+        # This will trigger on_tree_selection_changed with current=None
+        # which will clear the sidebar and show the initial state
+        pass  # The LibraryTreeWidget already handles clearing selection
+
+    def on_edit_part_clicked(self):
+        """Handle edit part button click"""
+        if self.current_selected_part:
+            self.edit_part_requested.emit(self.current_selected_part)
+
+    def cleanup(self):
+        """Clean up threads"""
+        if self.loader_thread.isRunning():
+            self.loader_thread.quit()
+            self.loader_thread.wait()
+        if self.hydrator_thread.isRunning():
+            self.hydrator_thread.quit()
+            self.hydrator_thread.wait()

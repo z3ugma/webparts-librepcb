@@ -28,6 +28,7 @@ class SearchPage(QWidget):
     item_selected = Signal(object)
     add_to_library_requested = Signal()
     request_image = Signal(str, str, str)
+    back_to_library_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -43,6 +44,7 @@ class SearchPage(QWidget):
         self.search_input = self.findChild(QLineEdit, "searchInput")
         self.search_button = self.findChild(QPushButton, "button_Search")
         self.add_to_library_button = self.findChild(QPushButton, "add_to_library_button")
+        self.back_to_library_button = self.findChild(QPushButton, "back_to_library_button")
         self.results_tree = self.findChild(QTreeWidget, "searchResultsTree")
         self.symbol_image_label = self.findChild(QLabel, "image_symbol")
         self.footprint_image_label = self.findChild(QLabel, "image_footprint")
@@ -101,6 +103,8 @@ class SearchPage(QWidget):
             self.results_tree.currentItemChanged.connect(self.on_tree_item_selected)
         if self.add_to_library_button:
             self.add_to_library_button.clicked.connect(self.add_to_library_requested)
+        if self.back_to_library_button:
+            self.back_to_library_button.clicked.connect(self.back_to_library_requested)
         
     def clear_images(self):
         if self.symbol_image_label:
