@@ -191,6 +191,7 @@ class LibraryPage(QWidget):
             self.select_none_button.clicked.connect(self.clear_selection)
         if self.tree:
             self.tree.currentItemChanged.connect(self.on_tree_selection_changed)
+            self.tree.itemDoubleClicked.connect(self.on_tree_item_double_clicked)
             if hasattr(self.tree, 'clicked_empty_area'):
                 self.tree.clicked_empty_area.connect(self.on_empty_area_clicked)
 
@@ -312,6 +313,11 @@ class LibraryPage(QWidget):
     def on_edit_part_clicked(self):
         if self.current_selected_part:
             self.edit_part_requested.emit(self.current_selected_part)
+
+    def on_tree_item_double_clicked(self, item, column):
+        """Handle double-click on a tree item to start editing."""
+        # A selection change will have already been triggered, populating self.current_selected_part
+        self.on_edit_part_clicked()
 
     def cleanup(self):
         if self.loader_thread.isRunning():
