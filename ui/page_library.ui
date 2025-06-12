@@ -161,6 +161,33 @@
         </column>
        </widget>
       </item>
+      <item>
+       <layout class="QHBoxLayout" name="bottomButtonLayout">
+        <item>
+         <spacer name="horizontalSpacer_bottom">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="select_none_button">
+          <property name="text">
+           <string>Select None</string>
+          </property>
+          <property name="toolTip">
+           <string>Clear the current selection</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>

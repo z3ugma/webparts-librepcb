@@ -117,10 +117,44 @@ class LibraryPage(QWidget):
         self.tree: QTreeWidget = ui.findChild(QTreeWidget, "libraryTree")
         self.search_button: QPushButton = ui.findChild(QPushButton, "go_to_search_button")
         self.edit_part_button: QPushButton = ui.findChild(QPushButton, "edit_part_button")
+        self.select_none_button: QPushButton = ui.findChild(QPushButton, "select_none_button")
         self.hero_view: QGraphicsView = ui.findChild(QGraphicsView, "image_hero_view")
         self.part_info_widget: PartInfoWidget = ui.findChild(PartInfoWidget, "part_info_widget")
         self.label_3dModelStatus = ui.findChild(QLabel, 'label_3dModelStatus')
         self.datasheetLink = ui.findChild(QLabel, 'datasheetLink')
+        
+        # Replace the standard QTreeWidget with our custom one for empty area detection
+        if self.tree:
+            # Create custom tree widget
+            custom_tree = LibraryTreeWidget()
+            custom_tree.setObjectName("libraryTree")
+            
+            # Copy properties from the original tree
+            custom_tree.setHeaderLabels(["Vendor", "Part Name", "LCSC ID", "Description", "Footprint", "Symbol", "Component", "Device"])
+            custom_tree.setColumnCount(8)
+            
+            # Configure column behavior
+            header = custom_tree.header()
+            header.setStretchLastSection(True)  # Last column expands to fill
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Description column stretches
+            
+            # Set initial column widths as hints
+            custom_tree.setColumnWidth(0, 120)  # Vendor
+            custom_tree.setColumnWidth(1, 150)  # Part Name  
+            custom_tree.setColumnWidth(2, 80)   # LCSC ID
+            # Description will stretch
+            custom_tree.setColumnWidth(4, 80)   # Footprint
+            custom_tree.setColumnWidth(5, 80)   # Symbol
+            custom_tree.setColumnWidth(6, 90)   # Component
+            # Device column will auto-expand
+            
+            # Replace in layout
+            parent_layout = self.tree.parentWidget().layout()
+            tree_index = parent_layout.indexOf(self.tree)
+            parent_layout.insertWidget(tree_index, custom_tree)
+            parent_layout.removeWidget(self.tree)
+            self.tree.deleteLater()
+            self.tree = custom_tree
         
         # Debug: Check if part_info_widget was found
         if self.part_info_widget is None:
@@ -139,7 +173,7 @@ class LibraryPage(QWidget):
         font.setPointSize(12)
         self.hero_text.setFont(font)
         self.hero_scene.addItem(self.hero_text)
-        self._show_hero_text("No Part Selected")
+        self._show_hero_text("Select a part to view details")
 
         self.loader_thread = QThread()
         self.loader_worker = LibraryLoaderWorker()
@@ -159,6 +193,8 @@ class LibraryPage(QWidget):
             self.search_button.clicked.connect(self.go_to_search_requested)
         if self.edit_part_button:
             self.edit_part_button.clicked.connect(self.on_edit_part_clicked)
+        if self.select_none_button:
+            self.select_none_button.clicked.connect(self.clear_selection)
         if self.tree:
             self.tree.currentItemChanged.connect(self.on_tree_selection_changed)
             if hasattr(self.tree, 'clicked_empty_area'):
@@ -293,7 +329,8 @@ class LibraryPage(QWidget):
             self.edit_part_button.setEnabled(True)
 
     def on_empty_area_clicked(self):
-        pass
+        """Handle clicks in empty area of tree - deselect everything"""
+        self.clear_selection()
 
     def on_edit_part_clicked(self):
         if self.current_selected_part:
