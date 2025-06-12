@@ -6,13 +6,14 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtWidgets import (
     QWidget, QTreeWidget, QTreeWidgetItem, QLabel, QPushButton,
-    QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QHeaderView
+    QVBoxLayout, QHeaderView
 )
 from PySide6.QtUiTools import QUiLoader
 
 from library_manager import LibraryManager
 from models.library_part import LibraryPart
 from .part_info_widget import PartInfoWidget
+from .hero_image_widget import HeroImageWidget
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ class LibraryPage(QWidget):
         
         loader = QUiLoader()
         loader.registerCustomWidget(PartInfoWidget)
+        loader.registerCustomWidget(HeroImageWidget)
         ui_file = os.path.join(os.path.dirname(__file__), "page_library.ui")
         ui = loader.load(ui_file, self)
 
@@ -118,7 +120,7 @@ class LibraryPage(QWidget):
         self.search_button: QPushButton = ui.findChild(QPushButton, "go_to_search_button")
         self.edit_part_button: QPushButton = ui.findChild(QPushButton, "edit_part_button")
         self.select_none_button: QPushButton = ui.findChild(QPushButton, "select_none_button")
-        self.hero_view: QGraphicsView = ui.findChild(QGraphicsView, "image_hero_view")
+        self.hero_image_widget: HeroImageWidget = ui.findChild(HeroImageWidget, "hero_image_widget")
         self.part_info_widget: PartInfoWidget = ui.findChild(PartInfoWidget, "part_info_widget")
         self.label_3dModelStatus = ui.findChild(QLabel, 'label_3dModelStatus')
         self.datasheetLink = ui.findChild(QLabel, 'datasheetLink')
@@ -156,24 +158,16 @@ class LibraryPage(QWidget):
             self.tree.deleteLater()
             self.tree = custom_tree
         
-        # Debug: Check if part_info_widget was found
+        # Debug: Check if widgets were found
         if self.part_info_widget is None:
-            logger.error("PartInfoWidget not found! Available widgets:")
-            for child in ui.findChildren(QWidget):
-                logger.error(f"  - {child.objectName()}: {type(child)}")
+            logger.error("PartInfoWidget not found!")
         else:
             logger.info(f"Found PartInfoWidget: {self.part_info_widget}")
-
-        self.hero_scene = QGraphicsScene()
-        self.hero_view.setScene(self.hero_scene)
-        self.hero_item = QGraphicsPixmapItem()
-        self.hero_scene.addItem(self.hero_item)
-        self.hero_text = QGraphicsTextItem()
-        font = QFont()
-        font.setPointSize(12)
-        self.hero_text.setFont(font)
-        self.hero_scene.addItem(self.hero_text)
-        self._show_hero_text("Select a part to view details")
+            
+        if self.hero_image_widget is None:
+            logger.error("HeroImageWidget not found!")
+        else:
+            logger.info(f"Found HeroImageWidget: {self.hero_image_widget}")
 
         self.loader_thread = QThread()
         self.loader_worker = LibraryLoaderWorker()
@@ -209,7 +203,14 @@ class LibraryPage(QWidget):
 
     def clear_selection(self):
         self.current_selected_part = None
-        self._show_hero_text("Select a part to view details")
+        
+        # Clear the tree widget selection
+        if self.tree:
+            self.tree.clearSelection()
+            self.tree.setCurrentItem(None)
+            
+        if self.hero_image_widget:
+            self.hero_image_widget.clear()
         if self.part_info_widget:
             try:
                 self.part_info_widget.clear()
@@ -221,33 +222,6 @@ class LibraryPage(QWidget):
             self.datasheetLink.setText('Datasheet: <a href="#">(Not available)</a>')
         if self.edit_part_button:
             self.edit_part_button.setEnabled(False)
-
-    def _show_hero_text(self, text: str):
-        self.hero_text.setPlainText(text)
-        self.hero_text.setVisible(True)
-        self.hero_item.setVisible(False)
-        self.hero_view.resetTransform()
-        self.hero_view.centerOn(self.hero_text)
-
-    def _show_hero_pixmap(self, pixmap: QPixmap):
-        if pixmap.isNull():
-            self._show_hero_text("No Image")
-            return
-            
-        self.hero_item.setPixmap(pixmap)
-        self.hero_item.setVisible(True)
-        self.hero_text.setVisible(False)
-        self.hero_view.resetTransform()
-        
-        view_rect = self.hero_view.viewport().rect()
-        if view_rect.width() > 0 and view_rect.height() > 0:
-            scale_factor = min(
-                (view_rect.width() * 1.5) / pixmap.width(),
-                (view_rect.height() * 1.5) / pixmap.height()
-            )
-            self.hero_view.scale(scale_factor, scale_factor)
-        
-        self.hero_view.centerOn(self.hero_item)
 
     def on_parts_loaded(self, parts_lite: List[LibraryPartLite]):
         self.tree.clear()
@@ -268,7 +242,8 @@ class LibraryPage(QWidget):
     def on_tree_selection_changed(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         if current:
             lite: LibraryPartLite = current.data(0, Qt.UserRole)
-            self._show_hero_text("Loading...")
+            if self.hero_image_widget:
+                self.hero_image_widget.show_loading()
             
             if self.part_info_widget:
                 try:
@@ -294,11 +269,13 @@ class LibraryPage(QWidget):
         
         logger.info(f"Hydration ready for part: {part.part_name}")
         
+        # Update hero image
         pixmap = getattr(part, '_hero_pixmap', None)
-        if isinstance(pixmap, QPixmap) and not pixmap.isNull():
-            self._show_hero_pixmap(pixmap)
-        else:
-            self._show_hero_text("No Image")
+        if self.hero_image_widget:
+            if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+                self.hero_image_widget.show_pixmap(pixmap)
+            else:
+                self.hero_image_widget.show_no_image()
         
         logger.info(f"About to call set_component on part_info_widget: {self.part_info_widget}")
         if self.part_info_widget:

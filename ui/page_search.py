@@ -3,7 +3,7 @@ import os
 from typing import List
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QLabel,
@@ -13,14 +13,11 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QWidget,
     QVBoxLayout,
-    QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QGraphicsTextItem
 )
 
 from models.search_result import SearchResult
 from .part_info_widget import PartInfoWidget
+from .hero_image_widget import HeroImageWidget
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +32,7 @@ class SearchPage(QWidget):
         super().__init__(parent)
         loader = QUiLoader()
         loader.registerCustomWidget(PartInfoWidget)
+        loader.registerCustomWidget(HeroImageWidget)
         ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_search.ui")
         loaded_ui = loader.load(ui_file_path, self)
 
@@ -52,7 +50,7 @@ class SearchPage(QWidget):
         self.footprint_image_label = self.findChild(QLabel, "image_footprint")
         
         self.part_info_widget = self.findChild(PartInfoWidget, "part_info_widget")
-        self.hero_view = self.findChild(QGraphicsView, "image_hero_view")
+        self.hero_image_widget = self.findChild(HeroImageWidget, "hero_image_widget")
         self.label_3dModelStatus = self.findChild(QLabel, "label_3dModelStatus")
         self.datasheetLink = self.findChild(QLabel, "datasheetLink")
 
@@ -61,36 +59,8 @@ class SearchPage(QWidget):
                 label.setAlignment(Qt.AlignCenter)
                 label.setWordWrap(True)
         
-        self._setup_hero_image()
         self._connect_signals()
         self.clear_images()
-
-    def _setup_hero_image(self):
-        self.hero_scene = QGraphicsScene()
-        self.hero_view.setScene(self.hero_scene)
-        self.hero_pixmap_item = QGraphicsPixmapItem()
-        self.hero_scene.addItem(self.hero_pixmap_item)
-        self.hero_text_item = QGraphicsTextItem()
-        font = QFont(); font.setPointSize(12); self.hero_text_item.setFont(font)
-        self.hero_text_item.setDefaultTextColor(Qt.gray)
-        self.hero_scene.addItem(self.hero_text_item)
-        self._set_hero_text("No Image")
-
-    def _set_hero_text(self, text: str):
-        self.hero_text_item.setPlainText(text); self.hero_text_item.setVisible(True)
-        self.hero_pixmap_item.setVisible(False); self.hero_view.resetTransform()
-        self.hero_view.centerOn(self.hero_text_item)
-
-    def _set_hero_pixmap(self, pixmap: QPixmap):
-        self.hero_view.resetTransform()
-        self.hero_pixmap_item.setPixmap(pixmap)
-        self.hero_pixmap_item.setVisible(True)
-        self.hero_text_item.setVisible(False)
-        if pixmap.isNull() or self.hero_view.width() == 0:
-            return
-        scale = min((1.5 * self.hero_view.width()) / pixmap.width(), (1.5 * self.hero_view.height()) / pixmap.height())
-        self.hero_view.scale(scale, scale)
-        self.hero_view.centerOn(self.hero_pixmap_item)
 
     def _connect_signals(self):
         if self.search_button:
@@ -111,7 +81,8 @@ class SearchPage(QWidget):
         if self.footprint_image_label:
             self.footprint_image_label.clear()
             self.footprint_image_label.setText("Select a component to see its footprint")
-        self._set_hero_text("No Image")
+        if self.hero_image_widget:
+            self.hero_image_widget.clear()
         if self.part_info_widget:
             self.part_info_widget.clear()
         self.label_3dModelStatus.setText("3D Model: (Not found)")
@@ -190,14 +161,14 @@ class SearchPage(QWidget):
         if self.part_info_widget:
             self.part_info_widget.set_component(result)
         
-        if result.image.url:
-            self._set_hero_text("Loading...")
-            self.request_image.emit(result.vendor, result.image.url, "hero")
-        elif result.hero_image_cache_path:
-            # If we have a cached path, load from there directly
-            self._set_hero_pixmap(QPixmap(result.hero_image_cache_path))
-        else:
-            self._set_hero_text("Image Not Available")
+        if self.hero_image_widget:
+            if result.image.url:
+                self.hero_image_widget.show_loading()
+                self.request_image.emit(result.vendor, result.image.url, "hero")
+            elif result.hero_image_cache_path:
+                self.hero_image_widget.show_pixmap(QPixmap(result.hero_image_cache_path))
+            else:
+                self.hero_image_widget.show_image_not_available()
 
         if result.has_3d_model:
             self.label_3dModelStatus.setText("3D Model: Found")

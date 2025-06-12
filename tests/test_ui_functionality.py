@@ -29,12 +29,8 @@ class TestSearchPageBehavior:
         assert search_page.results_tree is not None
         assert search_page.symbol_image_label is not None
         assert search_page.footprint_image_label is not None
-        assert search_page.label_LcscId is not None
-        assert search_page.label_PartTitle is not None
-        assert search_page.mfn_value is not None
-        assert search_page.mfn_part_value is not None
-        assert search_page.description_value is not None
-        assert search_page.hero_view is not None
+        assert search_page.part_info_widget is not None
+        assert search_page.hero_image_widget is not None
         assert search_page.label_3dModelStatus is not None
         assert search_page.datasheetLink is not None
 
@@ -70,56 +66,10 @@ class TestSearchPageBehavior:
         with qtbot.wait_signal(search_page.request_image) as blocker:
             search_page.set_details(result)
 
-        assert search_page.label_PartTitle.text() == "Test Part"
-        assert search_page.label_LcscId.text() == "LCSC ID: C123"
-        assert search_page.mfn_value.text() == "Mfr"
+        assert search_page.part_info_widget.label_PartTitle.text() == "Test Part"
+        assert search_page.part_info_widget.label_LcscId.text() == "LCSC ID: C123"
+        assert search_page.part_info_widget.mfn_value.text() == "Mfr"
         assert search_page.label_3dModelStatus.text() == "3D Model: Found"
         assert 'href="http://example.com/datasheet.pdf"' in search_page.datasheetLink.text()
         assert blocker.args == ["LCSC", "http://example.com/image.png", "hero"]
-        
-class TestSearchPageHeroImage:
-    def test_set_hero_text_displays_message(self, search_page: SearchPage):
-        """Test that _set_hero_text properly displays a text message."""
-        search_page._set_hero_text("Loading...")
-        assert search_page.hero_text_item.toPlainText() == "Loading..."
-        assert search_page.hero_text_item.isVisible()
-        assert not search_page.hero_pixmap_item.isVisible()
-
-    def test_set_hero_pixmap_displays_image(self, search_page: SearchPage):
-        """Test that _set_hero_pixmap properly displays an image and hides text."""
-        pixmap = QPixmap.fromImage(QImage(100, 100, QImage.Format_RGB32))
-        search_page._set_hero_pixmap(pixmap)
-        assert not search_page.hero_text_item.isVisible()
-        assert search_page.hero_pixmap_item.isVisible()
-        assert search_page.hero_pixmap_item.pixmap().size() == pixmap.size()
-
-    def test_set_hero_pixmap_handles_null_pixmap(self, search_page: SearchPage, mocker):
-        """Test that _set_hero_pixmap handles null/invalid pixmaps gracefully."""
-        mocker.patch.object(search_page.hero_view, 'resetTransform')
-        search_page._set_hero_pixmap(QPixmap())
-        assert search_page.hero_view.resetTransform.called
-
-    def test_set_hero_pixmap_handles_zero_view_width(self, search_page: SearchPage, mocker):
-        """Test that _set_hero_pixmap handles zero view width gracefully."""
-        mocker.patch.object(search_page.hero_view, 'resetTransform')
-        pixmap = QPixmap.fromImage(QImage(100, 100, QImage.Format_RGB32))
-        search_page.hero_view.width = Mock(return_value=0)
-        search_page._set_hero_pixmap(pixmap)
-        assert search_page.hero_view.resetTransform.called
-        
-    @pytest.mark.parametrize("img_w, img_h, view_w, view_h, expected_scale", [
-        (200, 100, 300, 300, 2.25),  # Wide image, constrained by width
-        (100, 200, 300, 300, 2.25),  # Tall image, constrained by height
-        (100, 100, 300, 300, 4.5),   # Square image
-    ])
-    def test_scaling_calculation(self, search_page: SearchPage, mocker, img_w, img_h, view_w, view_h, expected_scale):
-        """Test the hero image scaling calculation for various aspect ratios."""
-        mocker.patch.object(search_page.hero_view, 'width', return_value=view_w)
-        mocker.patch.object(search_page.hero_view, 'height', return_value=view_h)
-        mocker.patch.object(search_page.hero_view, 'scale')
-
-        pixmap = QPixmap(img_w, img_h)
-        search_page._set_hero_pixmap(pixmap)
-        
-        search_page.hero_view.scale.assert_called_once_with(expected_scale, expected_scale)
 

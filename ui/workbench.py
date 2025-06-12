@@ -19,6 +19,7 @@ from .page_library import LibraryPage
 from .page_library_element import LibraryElementPage
 from .page_search import SearchPage
 from .part_info_widget import PartInfoWidget
+from .hero_image_widget import HeroImageWidget
 from .symbol_review_page import SymbolReviewPage
 
 # Ensure SIGINT (Ctrl+C) quits the app properly
@@ -263,13 +264,14 @@ class WorkbenchController(QObject):
         pixmap = QPixmap()
         pixmap.loadFromData(image_data)
         if image_type == "hero":
-            self.page_Search._set_hero_pixmap(pixmap)
+            if self.page_Search.hero_image_widget:
+                self.page_Search.hero_image_widget.show_pixmap(pixmap)
             if self.current_search_result:
                 self.current_search_result.hero_image_cache_path = cache_path
 
     def on_image_failed(self, error_message: str, image_type: str):
-        if image_type == "hero":
-            self.page_Search._set_hero_text("Image Not Available")
+        if image_type == "hero" and self.page_Search.hero_image_widget:
+            self.page_Search.hero_image_widget.show_image_not_available()
 
     def on_hydration_completed(self, result: SearchResult):
         self.current_search_result = result
@@ -283,7 +285,7 @@ class WorkbenchController(QObject):
             if result.footprint_png_cache_path
             else QPixmap()
         )
-        self.page_Search.set_details(result)
+        # Note: set_details() is now called immediately in on_search_item_selected()
 
         assets_loaded = (
             result.symbol_png_cache_path is not None
@@ -306,6 +308,9 @@ class WorkbenchController(QObject):
         self.page_Search.clear_images()
         self.page_Search.add_to_library_button.setEnabled(False)
         if result:
+            # Start hero image download immediately
+            self.page_Search.set_details(result)
+            # Start symbol and footprint hydration in parallel
             self.page_Search.set_symbol_loading(True)
             self.page_Search.set_footprint_loading(True)
             self.request_hydration.emit(result)
@@ -324,6 +329,7 @@ def main():
     loader.registerCustomWidget(SearchPage)
     loader.registerCustomWidget(LibraryElementPage)
     loader.registerCustomWidget(PartInfoWidget)
+    loader.registerCustomWidget(HeroImageWidget)
     loader.registerCustomWidget(FootprintReviewPage)
     loader.registerCustomWidget(SymbolReviewPage)
     ui_file_path = os.path.join(
