@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from models.search_result import SearchResult
+from .part_info_widget import PartInfoWidget
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class SearchPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         loader = QUiLoader()
+        loader.registerCustomWidget(PartInfoWidget)
         ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_search.ui")
         loaded_ui = loader.load(ui_file_path, self)
 
@@ -49,11 +51,7 @@ class SearchPage(QWidget):
         self.symbol_image_label = self.findChild(QLabel, "image_symbol")
         self.footprint_image_label = self.findChild(QLabel, "image_footprint")
         
-        self.label_LcscId = self.findChild(QLabel, "label_LcscId")
-        self.label_PartTitle = self.findChild(QLabel, "label_PartTitle")
-        self.mfn_value = self.findChild(QLabel, "mfn_value")
-        self.mfn_part_value = self.findChild(QLabel, "mfn_part_value")
-        self.description_value = self.findChild(QLabel, "description_value")
+        self.part_info_widget = self.findChild(PartInfoWidget, "part_info_widget")
         self.hero_view = self.findChild(QGraphicsView, "image_hero_view")
         self.label_3dModelStatus = self.findChild(QLabel, "label_3dModelStatus")
         self.datasheetLink = self.findChild(QLabel, "datasheetLink")
@@ -114,11 +112,8 @@ class SearchPage(QWidget):
             self.footprint_image_label.clear()
             self.footprint_image_label.setText("Select a component to see its footprint")
         self._set_hero_text("No Image")
-        self.label_LcscId.setText("LCSC ID: -")
-        self.label_PartTitle.setText("No Part Loaded")
-        self.mfn_value.setText("(select a part)")
-        self.mfn_part_value.setText("")
-        self.description_value.setText("")
+        if self.part_info_widget:
+            self.part_info_widget.clear()
         self.label_3dModelStatus.setText("3D Model: (Not found)")
         self.datasheetLink.setText('Datasheet: <a href="#">(Not available)</a>')
 
@@ -192,11 +187,8 @@ class SearchPage(QWidget):
             self.search_button.setText(text)
             
     def set_details(self, result: SearchResult):
-        self.label_LcscId.setText(f"LCSC ID: {result.lcsc_id}")
-        self.label_PartTitle.setText(result.part_name)
-        self.mfn_value.setText(result.manufacturer)
-        self.mfn_part_value.setText(result.mfr_part_number)
-        self.description_value.setText(result.description)
+        if self.part_info_widget:
+            self.part_info_widget.set_component(result)
         
         if result.image.url:
             self._set_hero_text("Loading...")

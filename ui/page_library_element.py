@@ -25,6 +25,7 @@ from models.library_part import LibraryPart
 from search import Search
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
+from .part_info_widget import PartInfoWidget
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +61,9 @@ class LibraryElementPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         loader = QUiLoader()
-        # Promote the QLabel to our custom ClickableLabel before loading
+        # Register our custom widgets before loading
         loader.registerCustomWidget(ClickableLabel)
+        loader.registerCustomWidget(PartInfoWidget)
         ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_library_element.ui")
         self.ui = loader.load(ui_file_path, self)
         
@@ -85,11 +87,7 @@ class LibraryElementPage(QWidget):
 
     def _find_widgets(self):
         self.context_frame = self.ui.findChild(QFrame, "contextFrame")
-        self.label_LcscId = self.ui.findChild(QLabel, "label_LcscId")
-        self.label_PartTitle = self.ui.findChild(QLabel, "label_PartTitle")
-        self.mfn_value = self.ui.findChild(QLabel, "mfn_value")
-        self.mfn_part_value = self.ui.findChild(QLabel, "mfn_part_value")
-        self.description_value = self.ui.findChild(QLabel, "description_value")
+        self.part_info_widget = self.ui.findChild(PartInfoWidget, "part_info_widget")
         self.hero_view = self.ui.findChild(QGraphicsView, "image_hero_view")
         self.review_stack = self.ui.findChild(QStackedWidget, "reviewStackedWidget")
         self.button_PreviousStep = self.ui.findChild(QPushButton, "button_PreviousStep")
@@ -169,11 +167,8 @@ class LibraryElementPage(QWidget):
     
     def _set_component_searchresult(self, component):
         """Handle SearchResult objects"""
-        self.label_LcscId.setText(f"LCSC ID: {component.lcsc_id}")
-        self.label_PartTitle.setText(component.part_name)
-        self.mfn_value.setText(component.manufacturer)
-        self.mfn_part_value.setText(component.mfr_part_number)
-        self.description_value.setText(component.description)
+        if self.part_info_widget:
+            self.part_info_widget.set_component(component)
         
         if component.image_url:
             self._set_hero_text("Loading...")
@@ -193,11 +188,8 @@ class LibraryElementPage(QWidget):
         from library_manager import LibraryManager
         manager = LibraryManager()
         
-        self.label_LcscId.setText(f"LCSC ID: {part.lcsc_id}")
-        self.label_PartTitle.setText(part.part_name)
-        self.mfn_value.setText(part.manufacturer)
-        self.mfn_part_value.setText(part.mfr_part_number)
-        self.description_value.setText(part.description)
+        if self.part_info_widget:
+            self.part_info_widget.set_component(part)
         
         # Load hero image if it exists
         hero_path = manager.webparts_dir / part.uuid / "hero.png"

@@ -27,119 +27,7 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_Context">
       <item>
-       <widget class="QLabel" name="label_PartTitle">
-        <property name="font">
-         <font>
-          <pointsize>14</pointsize>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>No Part Loaded</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="textInteractionFlags">
-         <set>Qt::TextSelectableByMouse</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_LcscId">
-        <property name="text">
-         <string>LCSC ID: -</string>
-        </property>
-        <property name="textInteractionFlags">
-         <set>Qt::TextSelectableByMouse</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_2">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="mfn_label">
-        <property name="font">
-         <font>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Manufacturer:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="mfn_value">
-        <property name="text">
-         <string>(select a part)</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="textInteractionFlags">
-         <set>Qt::TextSelectableByMouse</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="mfn_part_label">
-        <property name="font">
-         <font>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Mfr. Part Number:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="mfn_part_value">
-        <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="textInteractionFlags">
-         <set>Qt::TextSelectableByMouse</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="description_label">
-        <property name="font">
-         <font>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Description:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="description_value">
-        <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="textInteractionFlags">
-         <set>Qt::TextSelectableByMouse</set>
-        </property>
-       </widget>
+       <widget class="PartInfoWidget" name="part_info_widget" native="true"/>
       </item>
       <item>
        <widget class="QGraphicsView" name="image_hero_view">
@@ -441,6 +329,14 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PartInfoWidget</class>
+   <extends>QWidget</extends>
+   <header>ui.part_info_widget</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

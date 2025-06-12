@@ -1,5 +1,6 @@
 import logging
 import os
+import signal
 import sys
 from typing import List
 
@@ -12,16 +13,22 @@ from library_manager import LibraryManager
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
 from search import Search
+
 from .footprint_review_page import FootprintReviewPage
 from .page_library import LibraryPage
 from .page_library_element import LibraryElementPage
 from .page_search import SearchPage
+from .part_info_widget import PartInfoWidget
 from .symbol_review_page import SymbolReviewPage
+
+# Ensure SIGINT (Ctrl+C) quits the app properly
+signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 class SearchWorker(QObject):
     search_completed = Signal(list)
@@ -138,17 +145,21 @@ class WorkbenchController(QObject):
         # Library page signals
         self.page_Library.go_to_search_requested.connect(self.go_to_search)
         self.page_Library.edit_part_requested.connect(self.on_library_edit_requested)
-        
+
         # Search page signals
         self.page_Search.search_requested.connect(self.run_search)
         self.page_Search.item_selected.connect(self.on_search_item_selected)
-        self.page_Search.add_to_library_requested.connect(self.on_add_to_library_requested)
+        self.page_Search.add_to_library_requested.connect(
+            self.on_add_to_library_requested
+        )
         self.page_Search.request_image.connect(self.on_request_image)
         self.page_Search.back_to_library_requested.connect(self.go_to_library)
-        
+
         # Library element page signals
-        if hasattr(self.page_LibraryElement, 'back_to_library_requested'):
-            self.page_LibraryElement.back_to_library_requested.connect(self.go_to_library)
+        if hasattr(self.page_LibraryElement, "back_to_library_requested"):
+            self.page_LibraryElement.back_to_library_requested.connect(
+                self.go_to_library
+            )
 
     def on_add_to_library_requested(self):
         if not self.current_search_result:
@@ -182,7 +193,7 @@ class WorkbenchController(QObject):
                 f"Successfully added '{part_name}' to library!", 4000
             )
             # Refresh the library page to show the new part
-            if hasattr(self.page_Library, 'refresh_library'):
+            if hasattr(self.page_Library, "refresh_library"):
                 self.page_Library.refresh_library()
         except Exception as e:
             logger.error(f"Failed to add part to library: {e}", exc_info=True)
@@ -200,11 +211,11 @@ class WorkbenchController(QObject):
         self.window.statusBar().showMessage("Search", 2000)
 
     def go_to_library_element(self):
-        if hasattr(self.page_LibraryElement, 'cleanup'):
+        if hasattr(self.page_LibraryElement, "cleanup"):
             self.page_LibraryElement.cleanup()
         # Simply switch to the LibraryElementPage; details have been set by on_library_review_requested
-        self.main_stack.setCurrentWidget(self.pages['library_element'])
-        self.window.statusBar().showMessage('Entering review workflow', 2000)
+        self.main_stack.setCurrentWidget(self.pages["library_element"])
+        self.window.statusBar().showMessage("Entering review workflow", 2000)
 
     def on_library_edit_requested(self, part: LibraryPart):
         """
@@ -212,7 +223,9 @@ class WorkbenchController(QObject):
         """
         if not part:
             logger.warning("Edit requested for a null part.")
-            self.window.statusBar().showMessage("Cannot edit a non-existent part.", 3000)
+            self.window.statusBar().showMessage(
+                "Cannot edit a non-existent part.", 3000
+            )
             return
 
         try:
@@ -220,7 +233,10 @@ class WorkbenchController(QObject):
             self.main_stack.setCurrentWidget(self.pages["library_element"])
             self.window.statusBar().showMessage(f"Editing {part.part_name}", 2000)
         except Exception as e:
-            logger.error(f"Error opening edit page for part {getattr(part, 'part_name', 'unknown')}: {e}", exc_info=True)
+            logger.error(
+                f"Error opening edit page for part {getattr(part, 'part_name', 'unknown')}: {e}",
+                exc_info=True,
+            )
             self.window.statusBar().showMessage(f"Error opening edit page: {e}", 5000)
 
     def run_search(self, search_term: str):
@@ -300,12 +316,14 @@ class WorkbenchController(QObject):
                 thread.quit()
                 thread.wait()
 
+
 def main():
     app = QApplication(sys.argv)
     loader = QUiLoader()
     loader.registerCustomWidget(LibraryPage)
     loader.registerCustomWidget(SearchPage)
     loader.registerCustomWidget(LibraryElementPage)
+    loader.registerCustomWidget(PartInfoWidget)
     loader.registerCustomWidget(FootprintReviewPage)
     loader.registerCustomWidget(SymbolReviewPage)
     ui_file_path = os.path.join(
