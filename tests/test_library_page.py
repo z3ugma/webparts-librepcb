@@ -114,11 +114,13 @@ def test_library_page_loads(app, temp_library):
 def test_library_part_lite_creation():
     """Test LibraryPartLite data structure"""
     flags = {"footprint": True, "symbol": False, "component": True, "device": False}
-    lite = LibraryPartLite("test-uuid", "TestPart", "C12345", flags, "/path/to/hero.png")
+    lite = LibraryPartLite("test-uuid", "TestVendor", "TestPart", "C12345", "Test description", flags, "/path/to/hero.png")
     
     assert lite.uuid == "test-uuid"
+    assert lite.vendor == "TestVendor"
     assert lite.part_name == "TestPart" 
     assert lite.lcsc_id == "C12345"
+    assert lite.description == "Test description"
     assert lite.status_flags["footprint"] is True
     assert lite.status_flags["symbol"] is False
     assert lite.hero_path == "/path/to/hero.png"
@@ -152,7 +154,7 @@ def test_library_page_tree_population(app, temp_library):
         
         # Create test data
         flags = {"footprint": True, "symbol": True, "component": True, "device": False}
-        lite = LibraryPartLite("test-uuid-1", "TestPart1", "C12345", flags, "")
+        lite = LibraryPartLite("test-uuid-1", "TestVendor", "TestPart1", "C12345", "Test description", flags, "")
         
         # Simulate parts loading
         page.on_parts_loaded([lite])
@@ -160,11 +162,14 @@ def test_library_page_tree_population(app, temp_library):
         # Check tree has been populated
         assert page.tree.topLevelItemCount() == 1
         item = page.tree.topLevelItem(0)
-        assert item.text(0) == "TestPart1"
-        assert item.text(1) == "✔"  # footprint
-        assert item.text(2) == "✔"  # symbol  
-        assert item.text(3) == "✔"  # component
-        assert item.text(4) == "✘"  # device
+        assert item.text(0) == "TestVendor"    # Vendor
+        assert item.text(1) == "TestPart1"     # Part Name  
+        assert item.text(2) == "C12345"        # LCSC ID
+        assert item.text(3) == "Test description"  # Description
+        assert item.text(4) == "✔"  # footprint
+        assert item.text(5) == "✔"  # symbol  
+        assert item.text(6) == "✔"  # component
+        assert item.text(7) == "✘"  # device
 
 
 if __name__ == "__main__":

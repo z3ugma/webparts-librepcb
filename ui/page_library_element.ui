@@ -263,6 +263,13 @@
         </property>
        </spacer>
       </item>
+      <item>
+       <widget class="QPushButton" name="back_to_library_button">
+        <property name="text">
+         <string>Back to Library</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtWidgets import (
     QWidget, QTreeWidget, QTreeWidgetItem, QLabel, QPushButton,
-    QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
+    QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QHeaderView
 )
 from PySide6.QtUiTools import QUiLoader
 
@@ -33,12 +33,14 @@ class LibraryTreeWidget(QTreeWidget):
 
 class LibraryPartLite:
     """Lightweight summary of a LibraryPart for fast loading."""
-    __slots__ = ("uuid", "part_name", "lcsc_id", "status_flags", "hero_path")
+    __slots__ = ("uuid", "vendor", "part_name", "lcsc_id", "description", "status_flags", "hero_path")
 
-    def __init__(self, uuid: str, part_name: str, lcsc_id: str, status_flags: dict, hero_path: str):
+    def __init__(self, uuid: str, vendor: str, part_name: str, lcsc_id: str, description: str, status_flags: dict, hero_path: str):
         self.uuid = uuid
+        self.vendor = vendor
         self.part_name = part_name
         self.lcsc_id = lcsc_id
+        self.description = description
         self.status_flags = status_flags
         self.hero_path = hero_path
 
@@ -62,7 +64,15 @@ class LibraryLoaderWorker(QObject):
                     "device": bool(part.device.uuid),
                 }
                 hero = os.path.join(self.manager.webparts_dir, part.uuid, "hero.png")
-                parts_lite.append(LibraryPartLite(part.uuid, part.part_name, part.lcsc_id, flags, hero))
+                parts_lite.append(LibraryPartLite(
+                    part.uuid, 
+                    part.vendor, 
+                    part.part_name, 
+                    part.lcsc_id, 
+                    part.description, 
+                    flags, 
+                    hero
+                ))
             self.parts_loaded.emit(parts_lite)
         except Exception as e:
             logger.error("Library loading failed", exc_info=True)
@@ -125,8 +135,23 @@ class LibraryPage(QWidget):
             custom_tree.setObjectName("libraryTree")
             
             # Copy properties from the original tree
-            custom_tree.setHeaderLabels(["Part", "Footprint", "Symbol", "Component", "Device"])
-            custom_tree.setColumnCount(5)
+            custom_tree.setHeaderLabels(["Vendor", "Part Name", "LCSC ID", "Description", "Footprint", "Symbol", "Component", "Device"])
+            custom_tree.setColumnCount(8)
+            
+            # Configure column behavior
+            header = custom_tree.header()
+            header.setStretchLastSection(True)  # Last column expands to fill
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Description column stretches
+            
+            # Set initial column widths as hints
+            custom_tree.setColumnWidth(0, 120)  # Vendor
+            custom_tree.setColumnWidth(1, 150)  # Part Name  
+            custom_tree.setColumnWidth(2, 80)   # LCSC ID
+            # Description will stretch
+            custom_tree.setColumnWidth(4, 80)   # Footprint
+            custom_tree.setColumnWidth(5, 80)   # Symbol
+            custom_tree.setColumnWidth(6, 90)   # Component
+            # Device column will auto-expand
             
             # Replace in layout
             parent_layout = self.tree.parentWidget().layout()
@@ -251,11 +276,18 @@ class LibraryPage(QWidget):
         """Populate tree with loaded parts"""
         self.tree.clear()
         for lite in parts_lite:
-            item = QTreeWidgetItem([lite.part_name, "", "", "", ""])
+            # Create item with: Vendor, Part Name, LCSC ID, Description, then status columns
+            item = QTreeWidgetItem([
+                lite.vendor,
+                lite.part_name, 
+                lite.lcsc_id,
+                lite.description,
+                "", "", "", ""  # Status columns filled below
+            ])
             item.setData(0, Qt.UserRole, lite)
             
-            # Set status icons
-            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
+            # Set status icons in columns 4-7 (Footprint, Symbol, Component, Device)
+            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=4):
                 val = lite.status_flags.get(key, False)
                 item.setText(col, '✔' if val else '✘')
             
@@ -281,9 +313,9 @@ class LibraryPage(QWidget):
             if self.datasheetLink:
                 self.datasheetLink.setText('Datasheet: <a href="#">(Loading...)</a>')
             
-            # Disable edit button while loading
-            if self.edit_part_button:
-                self.edit_part_button.setEnabled(False)
+            # Enable edit button while loading (don't disable it)
+            # if self.edit_part_button:
+            #     self.edit_part_button.setEnabled(False)
             
             # Request hydration
             self.hydrator_worker.hydrate(lite)
@@ -333,12 +365,14 @@ class LibraryPage(QWidget):
         items = self.tree.selectedItems()
         if items:
             item = items[0]
-            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
+            # Update status columns 4-7 (Footprint, Symbol, Component, Device)
+            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=4):
                 val = bool(getattr(part, key).uuid)
                 item.setText(col, '✔' if val else '✘')
         
-        # Highlight first step
-        self._highlight_step(0)
+        # Enable edit button now that part is loaded
+        if self.edit_part_button:
+            self.edit_part_button.setEnabled(True)
         
         # Fill details
         if self.detail_labels['lcsc']:

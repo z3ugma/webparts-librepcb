@@ -55,6 +55,7 @@ class ImageWorker(QObject):
 
 class LibraryElementPage(QWidget):
     request_image = Signal(str, str, str)
+    back_to_library_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -92,6 +93,7 @@ class LibraryElementPage(QWidget):
         self.review_stack = self.ui.findChild(QStackedWidget, "reviewStackedWidget")
         self.button_PreviousStep = self.ui.findChild(QPushButton, "button_PreviousStep")
         self.button_NextStep = self.ui.findChild(QPushButton, "button_NextStep")
+        self.back_to_library_button = self.ui.findChild(QPushButton, "back_to_library_button")
 
         self.page_FootprintReview: FootprintReviewPage = self.ui.findChild(QWidget, "page_FootprintReview")
         self.page_SymbolReview: SymbolReviewPage = self.ui.findChild(QWidget, "page_SymbolReview")
@@ -147,6 +149,8 @@ class LibraryElementPage(QWidget):
     def _connect_signals(self):
         self.button_PreviousStep.clicked.connect(self.previous_step)
         self.button_NextStep.clicked.connect(self.next_step)
+        if self.back_to_library_button:
+            self.back_to_library_button.clicked.connect(self.back_to_library_requested)
 
     def set_component(self, component):
         """Set component data - handles both SearchResult and LibraryPart objects"""

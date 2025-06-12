@@ -145,6 +145,10 @@ class WorkbenchController(QObject):
         self.page_Search.add_to_library_requested.connect(self.on_add_to_library_requested)
         self.page_Search.request_image.connect(self.on_request_image)
         self.page_Search.back_to_library_requested.connect(self.go_to_library)
+        
+        # Library element page signals
+        if hasattr(self.page_LibraryElement, 'back_to_library_requested'):
+            self.page_LibraryElement.back_to_library_requested.connect(self.go_to_library)
 
     def on_add_to_library_requested(self):
         if not self.current_search_result:
