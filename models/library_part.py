@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from .common_info import (
     ImageInfo, SymbolInfo, FootprintInfo, ComponentInfo, DeviceInfo
 )
+from .status import Status
 
 class LibraryPart(BaseModel):
     """
@@ -36,6 +37,9 @@ class LibraryPart(BaseModel):
     footprint: FootprintInfo = Field(default_factory=FootprintInfo)
     component: ComponentInfo = Field(default_factory=ComponentInfo)
     device: DeviceInfo = Field(default_factory=DeviceInfo)
+
+    # --- Approval Status ---
+    status: Status = Field(default_factory=Status)
 
     # --- Hydrated Fields ---
     has_3d_model: bool = Field(False)

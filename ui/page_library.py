@@ -58,10 +58,10 @@ class LibraryLoaderWorker(QObject):
             parts_lite = []
             for part in self.manager.get_all_parts():
                 flags = {
-                    "footprint": bool(part.footprint.uuid),
-                    "symbol": bool(part.symbol.uuid),
-                    "component": bool(part.component.uuid),
-                    "device": bool(part.device.uuid),
+                    "footprint": part.status.footprint == "approved",
+                    "symbol": part.status.symbol == "approved",
+                    "component": part.status.component == "approved",
+                    "device": part.status.device == "approved",
                 }
                 hero = os.path.join(self.manager.webparts_dir, part.uuid, "hero.png")
                 parts_lite.append(LibraryPartLite(
@@ -314,8 +314,8 @@ class LibraryPage(QWidget):
                 self.datasheetLink.setText('Datasheet: <a href="#">(Loading...)</a>')
             
             # Enable edit button while loading (don't disable it)
-            # if self.edit_part_button:
-            #     self.edit_part_button.setEnabled(False)
+            if self.edit_part_button:
+                self.edit_part_button.setEnabled(True)
             
             # Request hydration
             self.hydrator_worker.hydrate(lite)
@@ -360,41 +360,14 @@ class LibraryPage(QWidget):
                 self.datasheetLink.setText(f'<a href="{part.datasheet_url}">Open Datasheet</a>')
             else:
                 self.datasheetLink.setText("Datasheet: Not Available")
-        
         # Update row icons based on actual part data
         items = self.tree.selectedItems()
         if items:
             item = items[0]
             # Update status columns 4-7 (Footprint, Symbol, Component, Device)
             for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=4):
-                val = bool(getattr(part, key).uuid)
+                val = getattr(part.status, key) == "approved"
                 item.setText(col, '✔' if val else '✘')
-        
-        # Enable edit button now that part is loaded
-        if self.edit_part_button:
-            self.edit_part_button.setEnabled(True)
-        
-        # Fill details
-        if self.detail_labels['lcsc']:
-            self.detail_labels['lcsc'].setText(f"LCSC ID: {part.lcsc_id}")
-        if self.detail_labels['title']:
-            self.detail_labels['title'].setText(part.part_name)
-        if self.detail_labels['mfn']:
-            self.detail_labels['mfn'].setText(part.manufacturer)
-        if self.detail_labels['mfn_part']:
-            self.detail_labels['mfn_part'].setText(part.mfr_part_number)
-        if self.detail_labels['desc']:
-            self.detail_labels['desc'].setText(part.description)
-        
-        # Update row icons based on actual part data
-        items = self.tree.selectedItems()
-        if items:
-            item = items[0]
-            for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=1):
-                val = bool(getattr(part, key).uuid)
-                item.setText(col, '✔' if val else '✘')
-        
-        # Enable edit button now that part is loaded
         if self.edit_part_button:
             self.edit_part_button.setEnabled(True)
 

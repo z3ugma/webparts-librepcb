@@ -60,6 +60,8 @@ class LibraryElementPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         loader = QUiLoader()
+        # Promote the QLabel to our custom ClickableLabel before loading
+        loader.registerCustomWidget(ClickableLabel)
         ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_library_element.ui")
         self.ui = loader.load(ui_file_path, self)
         
@@ -70,7 +72,6 @@ class LibraryElementPage(QWidget):
         self.api_service = Search()
         self._setup_workers()
         self._find_widgets()
-        self._promote_step_labels()
         self._connect_signals()
 
     def _setup_workers(self):
@@ -95,33 +96,29 @@ class LibraryElementPage(QWidget):
         self.button_NextStep = self.ui.findChild(QPushButton, "button_NextStep")
         self.back_to_library_button = self.ui.findChild(QPushButton, "back_to_library_button")
 
+        self.workflow_status_labels = {
+            'footprint': self.ui.findChild(QLabel, 'label_step1_status'),
+            'symbol': self.ui.findChild(QLabel, 'label_step2_status'),
+            'assembly': self.ui.findChild(QLabel, 'label_step3_status'),
+            'finalize': self.ui.findChild(QLabel, 'label_step4_status'),
+        }
+
+        self.step_labels = [
+            self.ui.findChild(ClickableLabel, "step1_Status"),
+            self.ui.findChild(ClickableLabel, "step2_Status"),
+            self.ui.findChild(ClickableLabel, "step3_Status"),
+            self.ui.findChild(ClickableLabel, "step4_Status"),
+        ]
+
         self.page_FootprintReview: FootprintReviewPage = self.ui.findChild(QWidget, "page_FootprintReview")
         self.page_SymbolReview: SymbolReviewPage = self.ui.findChild(QWidget, "page_SymbolReview")
         self.page_Assembly: QWidget = self.ui.findChild(QWidget, "page_ComponentAssembly")
         self.page_Finalize: QWidget = self.ui.findChild(QWidget, "page_FinalSummary")
 
         self.review_pages = [self.page_FootprintReview, self.page_SymbolReview, self.page_Assembly, self.page_Finalize]
-        self.step_labels = []
         self.current_step_index = 0
         self._setup_hero_image()
         
-    def _promote_step_labels(self):
-        step_names = ["step1_Status", "step2_Status", "step3_Status", "step4_Status"]
-        layout = self.context_frame.layout()
-        if not layout: return
-        for i, name in enumerate(step_names):
-            old_label = self.ui.findChild(QLabel, name)
-            if old_label:
-                new_label = ClickableLabel(old_label.text())
-                new_label.setToolTip(old_label.toolTip())
-                new_label.setObjectName(old_label.objectName())
-                index = layout.indexOf(old_label)
-                layout.insertWidget(index, new_label)
-                layout.removeWidget(old_label)
-                old_label.deleteLater()
-                new_label.clicked.connect(partial(self.go_to_step, i))
-                self.step_labels.append(new_label)
-
     def _setup_hero_image(self):
         self.hero_scene = QGraphicsScene()
         self.hero_view.setScene(self.hero_scene)
@@ -151,6 +148,10 @@ class LibraryElementPage(QWidget):
         self.button_NextStep.clicked.connect(self.next_step)
         if self.back_to_library_button:
             self.back_to_library_button.clicked.connect(self.back_to_library_requested)
+        
+        for i, label in enumerate(self.step_labels):
+            if label:
+                label.clicked.connect(partial(self.go_to_step, i))
 
     def set_component(self, component):
         """Set component data - handles both SearchResult and LibraryPart objects"""
@@ -219,6 +220,29 @@ class LibraryElementPage(QWidget):
         self.page_SymbolReview.set_symbol_image(
             QPixmap(str(symbol_path)) if symbol_path.exists() else QPixmap()
         )
+
+        self._update_workflow_status(part)
+
+    def _update_workflow_status(self, part: LibraryPart):
+        """Update the workflow status indicators in the sidebar."""
+        status_map = {
+            "approved": "✔",
+            "needs_review": "⏳",
+            "error": "✘",
+            "unavailable": "❓",
+        }
+        
+        workflow_mapping = {
+            'footprint': 'footprint',
+            'symbol': 'symbol',
+            'assembly': 'component',
+            'finalize': 'device',
+        }
+
+        for label_key, status_key in workflow_mapping.items():
+            if self.workflow_status_labels[label_key]:
+                status_value = getattr(part.status, status_key, "unavailable")
+                self.workflow_status_labels[label_key].setText(status_map.get(status_value, "❓"))
 
     def on_image_loaded(self, image_data: bytes, image_type: str):
         pixmap = QPixmap()

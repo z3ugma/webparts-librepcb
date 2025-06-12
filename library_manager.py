@@ -59,6 +59,7 @@ class LibraryManager:
         parts = []
         if not self.webparts_dir.exists():
             return parts
+
         for part_dir in self.webparts_dir.iterdir():
             if part_dir.is_dir():
                 manifest_path = part_dir / "part.wp"
@@ -66,10 +67,46 @@ class LibraryManager:
                     try:
                         with open(manifest_path, "r") as f:
                             part_data = json.load(f)
-                            parts.append(LibraryPart.model_validate(part_data))
+                            part = LibraryPart.model_validate(part_data)
+
+                            # Hydrate status fields by reading element manifests
+                            part.status.footprint = self._get_element_status(
+                                "pkg", part.footprint.uuid, "footprint"
+                            )
+                            part.status.symbol = self._get_element_status(
+                                "sym", part.symbol.uuid, "symbol"
+                            )
+                            part.status.component = self._get_element_status(
+                                "cmp", part.component.uuid, "component"
+                            )
+                            part.status.device = self._get_element_status(
+                                "dev", part.uuid, "device"
+                            )
+
+                            parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
                         print(f"Error loading part manifest {manifest_path}: {e}")
         return parts
+
+    def _get_element_status(
+        self, element_dir_name: str, element_uuid: str, element_type: str
+    ) -> str:
+        """Reads the status from a given element's .wp manifest."""
+        if not element_uuid:
+            return "unavailable"
+
+        element_dir = self.library_path / element_dir_name / element_uuid
+        manifest_path = element_dir / f"{element_uuid}.{element_type}.wp"
+
+        if not manifest_path.exists():
+            return "needs_review"  # Default if manifest is missing
+
+        try:
+            with open(manifest_path, "r") as f:
+                data = json.load(f)
+                return data.get("status", "unknown")
+        except (json.JSONDecodeError, IOError):
+            return "error"
 
 
     def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:

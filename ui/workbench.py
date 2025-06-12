@@ -208,37 +208,20 @@ class WorkbenchController(QObject):
 
     def on_library_edit_requested(self, part: LibraryPart):
         """
-        Handle edit request from LibraryPage: switch to LibraryElementPage with the given part
+        Handle edit request from LibraryPage: switch to LibraryElementPage with the given part.
         """
+        if not part:
+            logger.warning("Edit requested for a null part.")
+            self.window.statusBar().showMessage("Cannot edit a non-existent part.", 3000)
+            return
+
         try:
-            # LibraryPage provides the full LibraryPart object
-            if hasattr(self.page_LibraryElement, 'set_component'):
-                self.page_LibraryElement.set_component(part)
-            elif hasattr(self.page_LibraryElement, 'set_part'):
-                self.page_LibraryElement.set_part(part)
-            
-            # Start at the first step (footprint review)
-            if hasattr(self.page_LibraryElement, 'go_to_step'):
-                self.page_LibraryElement.go_to_step(0)
-            
-            # Switch to the LibraryElementPage
+            self.page_LibraryElement.set_component(part)
             self.main_stack.setCurrentWidget(self.pages["library_element"])
             self.window.statusBar().showMessage(f"Editing {part.part_name}", 2000)
-            
         except Exception as e:
-            logger.error(f"Error opening edit for part {getattr(part, 'part_name', 'unknown')}: {e}")
-            self.window.statusBar().showMessage("Failed to open edit page", 3000)
-
-        if self.current_search_result:
-            self.page_LibraryElement.set_component(self.current_search_result)
-            self.main_stack.setCurrentWidget(self.pages["library_element"])
-            self.window.statusBar().showMessage(
-                f"Reviewing {self.current_search_result.part_name}", 2000
-            )
-        else:
-            self.window.statusBar().showMessage(
-                "Please select a part to add to the library first.", 3000
-            )
+            logger.error(f"Error opening edit page for part {getattr(part, 'part_name', 'unknown')}: {e}", exc_info=True)
+            self.window.statusBar().showMessage(f"Error opening edit page: {e}", 5000)
 
     def run_search(self, search_term: str):
         self.page_Search.set_search_button_enabled(False)
