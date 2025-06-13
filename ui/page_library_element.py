@@ -26,6 +26,7 @@ from search import Search
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
 from .part_info_widget import PartInfoWidget
+import constants as const
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,6 @@ class LibraryElementPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         loader = QUiLoader()
-        # Register our custom widgets before loading
         loader.registerCustomWidget(ClickableLabel)
         loader.registerCustomWidget(PartInfoWidget)
         ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_library_element.ui")
@@ -155,12 +155,9 @@ class LibraryElementPage(QWidget):
         """Set component data - handles both SearchResult and LibraryPart objects"""
         self.component = component
         
-        # Handle different object types
         if hasattr(component, 'image_url'):
-            # SearchResult object
             self._set_component_searchresult(component)
         else:
-            # LibraryPart object
             self._set_component_librarypart(component)
         
         self.go_to_step(0)
@@ -185,14 +182,10 @@ class LibraryElementPage(QWidget):
     
     def _set_component_librarypart(self, part):
         """Handle LibraryPart objects"""
-        from library_manager import LibraryManager
-        manager = LibraryManager()
-        
         if self.part_info_widget:
             self.part_info_widget.set_component(part)
         
-        # Load hero image if it exists
-        hero_path = manager.webparts_dir / part.uuid / "hero.png"
+        hero_path = const.WEBPARTS_DIR / part.uuid / const.FILENAME_HERO_IMAGE
         if hero_path.exists():
             pixmap = QPixmap(str(hero_path))
             if not pixmap.isNull():
@@ -202,9 +195,8 @@ class LibraryElementPage(QWidget):
         else:
             self._set_hero_text("Image Not Available")
         
-        # Load footprint and symbol images from library paths
-        footprint_path = manager.pkg_dir / part.footprint.uuid / "footprint.png"
-        symbol_path = manager.webparts_dir / part.uuid / "symbol.png"  # Assuming symbol images are stored here
+        footprint_path = const.PKG_DIR / part.footprint.uuid / "footprint.png"
+        symbol_path = const.WEBPARTS_DIR / part.uuid / "symbol.png"
         
         self.page_FootprintReview.set_footprint_image(
             QPixmap(str(footprint_path)) if footprint_path.exists() else QPixmap()
@@ -217,24 +209,10 @@ class LibraryElementPage(QWidget):
 
     def _update_workflow_status(self, part: LibraryPart):
         """Update the workflow status indicators in the sidebar."""
-        status_map = {
-            "approved": "✔",
-            "needs_review": "⏳",
-            "error": "✘",
-            "unavailable": "❓",
-        }
-        
-        workflow_mapping = {
-            'footprint': 'footprint',
-            'symbol': 'symbol',
-            'assembly': 'component',
-            'finalize': 'device',
-        }
-
-        for label_key, status_key in workflow_mapping.items():
+        for label_key, status_key in const.WORKFLOW_MAPPING.items():
             if self.workflow_status_labels[label_key]:
-                status_value = getattr(part.status, status_key, "unavailable")
-                self.workflow_status_labels[label_key].setText(status_map.get(status_value, "❓"))
+                status_value = getattr(part.status, status_key, const.STATUS_UNAVAILABLE)
+                self.workflow_status_labels[label_key].setText(const.STATUS_ICON_MAP.get(status_value, "❓"))
 
     def on_image_loaded(self, image_data: bytes, image_type: str):
         pixmap = QPixmap()
@@ -263,10 +241,6 @@ class LibraryElementPage(QWidget):
         self.go_to_step(self.current_step_index - 1)
 
     def cleanup(self):
-        if self.image_thread.isRunning(): self.image_thread.quit(); self.image_thread.wait()
-
-    def cleanup(self):
-        # ensure threads are cleaned
         if hasattr(self, 'image_thread') and self.image_thread.isRunning():
             self.image_thread.quit()
             self.image_thread.wait()

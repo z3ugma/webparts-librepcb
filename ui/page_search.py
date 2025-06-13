@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 from library_manager import LibraryManager
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
-
 from .hero_image_widget import HeroImageWidget
 from .part_info_widget import PartInfoWidget
+import constants as const
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,6 @@ class AddToLibraryDialog(QDialog):
         self.log_view.setFont(font)
         layout.addWidget(self.log_view)
 
-        # Button Box Setup
         button_box = QDialogButtonBox(self)
         self.copy_button = button_box.addButton("Copy to Clipboard", QDialogButtonBox.ActionRole)
         self.ok_button = button_box.addButton(QDialogButtonBox.Ok)
@@ -78,15 +77,12 @@ class AddToLibraryDialog(QDialog):
         self.ui_log_handler = None
         self.file_log_handler = None
 
-        # Setup worker thread
         self._thread = QThread(self)
         self._manager = LibraryManager()
         self._manager.moveToThread(self._thread)
 
-        # Setup Logging (UI and File)
         self._setup_logging(search_result)
 
-        # Connect signals
         self._thread.started.connect(
             lambda: self._manager.add_part_from_search_result(search_result)
         )
@@ -98,24 +94,18 @@ class AddToLibraryDialog(QDialog):
     def _setup_logging(self, search_result: SearchResult):
         """Creates and attaches UI and file-based log handlers."""
         part_uuid = search_result.uuid or f"search-{search_result.lcsc_id}"
-
-        # Create UI handler
         self.ui_log_handler = QLogHandler(self)
         self.ui_log_handler.log_received.connect(self.log_view.appendPlainText)
         logging.getLogger().addHandler(self.ui_log_handler)
-
-        # Create File handler via LibraryManager
         self.file_log_handler = self._manager.setup_conversion_logging(part_uuid)
 
     @Slot()
     def _on_copy_to_clipboard(self):
-        """Copies the content of the log view to the system clipboard."""
         QApplication.clipboard().setText(self.log_view.toPlainText())
         logger.info("Log content copied to clipboard.")
 
     @Slot(object)
     def _on_finished(self, library_part):
-        """Called when the library manager is done."""
         self.library_part = library_part
         if library_part:
             logger.info("\n✅ Success!")
@@ -125,22 +115,16 @@ class AddToLibraryDialog(QDialog):
         self._thread.quit()
 
     def done(self, result):
-        """Override to ensure cleanup happens before the object is destroyed."""
-        # Clean up UI logger
         if self.ui_log_handler:
             logging.getLogger().removeHandler(self.ui_log_handler)
             self.ui_log_handler = None
-        
-        # Clean up File logger via LibraryManager
         if self.file_log_handler:
             self._manager.cleanup_conversion_logging(self.file_log_handler)
             self.file_log_handler = None
-
         if self._thread and self._thread.isRunning():
             self._thread.quit()
             self._thread.wait(1000)
         super().done(result)
-
 
 class SearchPage(QWidget):
     search_requested = Signal(str)
@@ -154,7 +138,7 @@ class SearchPage(QWidget):
         self._original_symbol_pixmap = None
         self._original_footprint_pixmap = None
         self._current_search_result = None
-        self.library_manager = LibraryManager() # For checking existence
+        self.library_manager = LibraryManager()
         self._load_ui()
         self._find_widgets()
         self._connect_signals()
@@ -220,18 +204,15 @@ class SearchPage(QWidget):
         dialog.deleteLater()
 
     def resizeEvent(self, event):
-        """Handle resize events to rescale images to fit the new size."""
         super().resizeEvent(event)
         self._rescale_images()
 
     def showEvent(self, event):
-        """Handle show events to ensure images are properly scaled when first displayed."""
         super().showEvent(event)
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self._rescale_images)
 
     def _rescale_images(self):
-        """Internal method to rescale both symbol and footprint images to current container sizes."""
         if (
             self._original_symbol_pixmap
             and not self._original_symbol_pixmap.isNull()

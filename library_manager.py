@@ -1,15 +1,16 @@
-import json
 import logging
+import json
 import shutil
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from PySide6.QtCore import QObject, Signal
 
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
+from converters.footprint_converter import generate_footprint
+import constants as const
 
-LIBRARY_DIR = Path("./WebParts.lplib")
 logger = logging.getLogger(__name__)
 
 
@@ -18,36 +19,25 @@ class LibraryManager(QObject):
 
     addPartFinished = Signal(object)  # Will emit LibraryPart or None
 
-    def __init__(self, library_path: Path = LIBRARY_DIR, parent=None):
+    def __init__(self, library_path: Path = const.LIBRARY_DIR, parent=None):
         """Initializes the LibraryManager."""
         super().__init__(parent)
         self.library_path = library_path
-        self.webparts_dir = self.library_path / "webparts"
-        self.pkg_dir = self.library_path / "pkg"
+        self.webparts_dir = const.WEBPARTS_DIR
+        self.pkg_dir = const.PKG_DIR
 
     def setup_conversion_logging(self, part_uuid: str) -> Optional[logging.FileHandler]:
         """
         Creates a dedicated log file for a conversion process.
-
-        Args:
-            part_uuid: The UUID of the part being converted.
-
-        Returns:
-            The configured FileHandler, or None if the UUID is invalid.
         """
         if not part_uuid:
             return None
-
         log_dir = self.webparts_dir / part_uuid
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file_path = log_dir / "conversion.log"
-
-        file_handler = logging.FileHandler(log_file_path, mode="w", encoding="utf-8")
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        log_file_path = log_dir / const.FILENAME_CONVERSION_LOG
+        file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
-
         logging.getLogger().addHandler(file_handler)
         logger.info(f"Conversion log started at: {log_file_path}")
         return file_handler
@@ -63,7 +53,7 @@ class LibraryManager(QObject):
         """Checks if a part manifest already exists in the library."""
         if not part_uuid:
             return False
-        manifest_path = self.webparts_dir / part_uuid / "part.wp"
+        manifest_path = self.webparts_dir / part_uuid / const.FILENAME_PART_MANIFEST
         return manifest_path.exists()
 
     def add_part_from_search_result(self, search_result: SearchResult):
@@ -93,6 +83,12 @@ class LibraryManager(QObject):
             self._save_footprint_source_json(search_result, part_pkg_dir)
             logger.info("  OK.")
 
+            logger.info("--- Starting Footprint Generation ---")
+            if generate_footprint(search_result.raw_cad_data, str(part_pkg_dir)):
+                logger.info("--- Footprint Generation Succeeded ---")
+            else:
+                logger.error("--- Footprint Generation Failed ---")
+            
             logger.info("Creating manifests...")
             self._create_manifests(library_part, part_pkg_dir)
             logger.info("  OK.")
@@ -111,31 +107,27 @@ class LibraryManager(QObject):
 
         for part_dir in self.webparts_dir.iterdir():
             if part_dir.is_dir():
-                manifest_path = part_dir / "part.wp"
+                manifest_path = part_dir / const.FILENAME_PART_MANIFEST
                 if manifest_path.exists():
                     try:
                         with open(manifest_path, "r") as f:
                             part_data = json.load(f)
                             part = LibraryPart.model_validate(part_data)
-
                             part.status.footprint = self._get_element_status(
-                                "pkg", part.footprint.uuid, "footprint"
+                                const.WORKFLOW_MAPPING['footprint'], part.footprint.uuid, "footprint"
                             )
                             part.status.symbol = self._get_element_status(
-                                "sym", part.symbol.uuid, "symbol"
+                                const.WORKFLOW_MAPPING['symbol'], part.symbol.uuid, "symbol"
                             )
                             part.status.component = self._get_element_status(
-                                "cmp", part.component.uuid, "component"
+                                const.WORKFLOW_MAPPING['assembly'], part.component.uuid, "component"
                             )
                             part.status.device = self._get_element_status(
-                                "dev", part.uuid, "device"
+                                const.WORKFLOW_MAPPING['finalize'], part.uuid, "device"
                             )
-
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
-                        logger.error(
-                            f"Error loading part manifest {manifest_path}: {e}"
-                        )
+                        logger.error(f"Error loading part manifest {manifest_path}: {e}")
         return parts
 
     def _get_element_status(
@@ -143,30 +135,23 @@ class LibraryManager(QObject):
     ) -> str:
         """Reads the status from a given element's .wp manifest."""
         if not element_uuid:
-            return "unavailable"
-
+            return const.STATUS_UNAVAILABLE
         element_dir = self.library_path / element_dir_name / element_uuid
         manifest_path = element_dir / f"{element_uuid}.{element_type}.wp"
-
         if not manifest_path.exists():
-            return "needs_review"
-
+            return const.STATUS_NEEDS_REVIEW
         try:
             with open(manifest_path, "r") as f:
                 data = json.load(f)
                 return data.get("status", "unknown")
         except (json.JSONDecodeError, IOError):
-            return "error"
+            return const.STATUS_ERROR
 
-    def _map_search_result_to_library_part(
-        self, search_result: SearchResult
-    ) -> LibraryPart:
+    def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
         search_dict = search_result.model_dump()
-        if not search_dict.get("uuid"):
-            search_dict["uuid"] = (
-                search_result.uuid or f"search-{search_result.lcsc_id}"
-            )
+        if not search_dict.get('uuid'):
+            search_dict['uuid'] = search_result.uuid or f"search-{search_result.lcsc_id}"
         return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(
@@ -179,12 +164,12 @@ class LibraryManager(QObject):
                 search_result.footprint_png_cache_path, pkg_dir, "footprint.png"
             )
         if search_result.footprint_svg_cache_path:
-            self._copy_asset(
+             self._copy_asset(
                 search_result.footprint_svg_cache_path, pkg_dir, "footprint.svg"
             )
         if search_result.hero_image_cache_path:
             new_paths["hero_image_cache_path"] = self._copy_asset(
-                search_result.hero_image_cache_path, webparts_dir, "hero.png"
+                search_result.hero_image_cache_path, webparts_dir, const.FILENAME_HERO_IMAGE
             )
         return new_paths
 
@@ -192,7 +177,7 @@ class LibraryManager(QObject):
         """Saves the packageDetail portion of the raw CAD data."""
         if search_result.raw_cad_data:
             if package_detail := search_result.raw_cad_data.get("packageDetail"):
-                source_json_path = pkg_dir / "source.json"
+                source_json_path = pkg_dir / const.FILENAME_SOURCE_JSON
                 with open(source_json_path, "w") as f:
                     json.dump(package_detail, f, indent=2)
 
@@ -208,16 +193,13 @@ class LibraryManager(QObject):
     def _create_manifests(self, library_part: LibraryPart, pkg_dir: Path):
         """Creates the central part.wp and the footprint element manifest."""
         manifest_dir = self.webparts_dir / library_part.uuid
-        manifest_path = manifest_dir / "part.wp"
+        manifest_path = manifest_dir / const.FILENAME_PART_MANIFEST
         with open(manifest_path, "w") as f:
             f.write(library_part.model_dump_json(indent=2))
-
-        footprint_manifest_path = (
-            pkg_dir / f"{library_part.footprint.uuid}.footprint.wp"
-        )
+        footprint_manifest_path = pkg_dir / f"{library_part.footprint.uuid}.{const.FILENAME_FOOTPRINT_WP}"
         footprint_manifest = {
             "version": 1,
-            "status": "needs_review",
+            "status": const.STATUS_NEEDS_REVIEW,
             "validation": {"errors": [], "warnings": []},
         }
         with open(footprint_manifest_path, "w") as f:
