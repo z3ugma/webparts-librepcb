@@ -150,9 +150,7 @@ class WorkbenchController(QObject):
         # Search page signals
         self.page_Search.search_requested.connect(self.run_search)
         self.page_Search.item_selected.connect(self.on_search_item_selected)
-        self.page_Search.add_to_library_requested.connect(
-            self.on_add_to_library_requested
-        )
+        self.page_Search.part_added_to_library.connect(self.on_part_added_to_library)
         self.page_Search.request_image.connect(self.on_request_image)
         self.page_Search.back_to_library_requested.connect(self.go_to_library)
 
@@ -162,46 +160,21 @@ class WorkbenchController(QObject):
                 self.go_to_library
             )
 
-    def on_add_to_library_requested(self):
-        if not self.current_search_result:
-            return
-        self._execute_add_to_library()
-
-    def _execute_add_to_library(self):
-        part_uuid = self.current_search_result.uuid
-        part_name = self.current_search_result.part_name
-
-        if self.library_manager.part_exists(part_uuid):
-            reply = QMessageBox.question(
-                self.window,
-                "Confirm Overwrite",
-                f"The part '{part_name}' already exists in your library. Do you want to overwrite it?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if reply == QMessageBox.No:
-                self.window.statusBar().showMessage(
-                    f"Add to library cancelled for '{part_name}'.", 3000
-                )
-                self.page_Search.add_to_library_button.setText("Add to Library")
-                self.page_Search.add_to_library_button.setEnabled(True)
-                return
-        try:
-            library_part = self.library_manager.add_part_from_search_result(
-                self.current_search_result
-            )
+    def on_part_added_to_library(self, library_part: LibraryPart):
+        """
+        Handles the successful addition of a part to the library.
+        """
+        if library_part:
             self.window.statusBar().showMessage(
-                f"Successfully added '{part_name}' to library!", 4000
+                f"Successfully added '{library_part.part_name}' to library!", 4000
             )
             # Refresh the library page to show the new part
             if hasattr(self.page_Library, "refresh_library"):
                 self.page_Library.refresh_library()
-        except Exception as e:
-            logger.error(f"Failed to add part to library: {e}", exc_info=True)
-            self.window.statusBar().showMessage(f"Error adding to library: {e}", 5000)
-
-        self.page_Search.add_to_library_button.setText("Add to Library")
-        self.page_Search.add_to_library_button.setEnabled(True)
+            # Navigate to the new part's element page
+            self.on_library_edit_requested(library_part)
+        else:
+            self.window.statusBar().showMessage("Failed to add part to library.", 5000)
 
     def go_to_library(self):
         self.main_stack.setCurrentWidget(self.pages["library"])

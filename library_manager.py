@@ -1,30 +1,63 @@
-"""
-Manages the local WebParts.lplib library.
-
-This module is responsible for converting SearchResult objects into permanent
-LibraryPart objects and saving them to the .lplib directory structure.
-"""
-
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Optional
+
+from PySide6.QtCore import QObject, Signal
 
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
 
 LIBRARY_DIR = Path("./WebParts.lplib")
+logger = logging.getLogger(__name__)
 
 
-class LibraryManager:
+class LibraryManager(QObject):
     """A class to manage all library operations."""
 
-    def __init__(self, library_path: Path = LIBRARY_DIR):
+    addPartFinished = Signal(object)  # Will emit LibraryPart or None
+
+    def __init__(self, library_path: Path = LIBRARY_DIR, parent=None):
         """Initializes the LibraryManager."""
+        super().__init__(parent)
         self.library_path = library_path
         self.webparts_dir = self.library_path / "webparts"
         self.pkg_dir = self.library_path / "pkg"
-        # self.sym_dir = self.library_path / "sym" # For future use
+
+    def setup_conversion_logging(self, part_uuid: str) -> Optional[logging.FileHandler]:
+        """
+        Creates a dedicated log file for a conversion process.
+
+        Args:
+            part_uuid: The UUID of the part being converted.
+
+        Returns:
+            The configured FileHandler, or None if the UUID is invalid.
+        """
+        if not part_uuid:
+            return None
+
+        log_dir = self.webparts_dir / part_uuid
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file_path = log_dir / "conversion.log"
+
+        file_handler = logging.FileHandler(log_file_path, mode="w", encoding="utf-8")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+
+        logging.getLogger().addHandler(file_handler)
+        logger.info(f"Conversion log started at: {log_file_path}")
+        return file_handler
+
+    def cleanup_conversion_logging(self, handler: Optional[logging.FileHandler]):
+        """Removes and closes a specific log handler."""
+        if handler:
+            logger.info("Ending conversion log.")
+            handler.close()
+            logging.getLogger().removeHandler(handler)
 
     def part_exists(self, part_uuid: str) -> bool:
         """Checks if a part manifest already exists in the library."""
@@ -33,26 +66,42 @@ class LibraryManager:
         manifest_path = self.webparts_dir / part_uuid / "part.wp"
         return manifest_path.exists()
 
-    def add_part_from_search_result(self, search_result: SearchResult) -> Dict[str, str]:
+    def add_part_from_search_result(self, search_result: SearchResult):
         """
-        Converts a SearchResult, saves it, and returns the new permanent asset paths.
+        Converts a SearchResult, saves it, and emits a finished signal.
         """
-        # Convert the SearchResult to a LibraryPart object, preserving nested models.
-        library_part = self._map_search_result_to_library_part(search_result)
+        try:
+            logger.info(f"Starting import of '{search_result.lcsc_id}'...")
+            library_part = self._map_search_result_to_library_part(search_result)
+            logger.info(f"  Mapped to Library Part UUID: {library_part.uuid}")
 
-        part_webparts_dir = self.webparts_dir / library_part.uuid
-        part_pkg_dir = self.pkg_dir / library_part.footprint.uuid
-        
-        part_webparts_dir.mkdir(parents=True, exist_ok=True)
-        part_pkg_dir.mkdir(parents=True, exist_ok=True)
+            part_webparts_dir = self.webparts_dir / library_part.uuid
+            part_pkg_dir = self.pkg_dir / library_part.footprint.uuid
 
-        new_paths = self._copy_assets_and_get_new_paths(search_result, part_pkg_dir, part_webparts_dir)
-        self._save_footprint_source_json(search_result, part_pkg_dir)
-        self._create_manifests(library_part, part_pkg_dir)
+            logger.info("Creating library directories...")
+            part_webparts_dir.mkdir(parents=True, exist_ok=True)
+            part_pkg_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("  OK.")
 
-        print(f"Successfully added part {library_part.lcsc_id} to library.")
-        # Return the dictionary of new permanent paths
-        return new_paths
+            logger.info("Copying assets...")
+            self._copy_assets_and_get_new_paths(
+                search_result, part_pkg_dir, part_webparts_dir
+            )
+            logger.info("  OK.")
+
+            logger.info("Saving footprint source JSON...")
+            self._save_footprint_source_json(search_result, part_pkg_dir)
+            logger.info("  OK.")
+
+            logger.info("Creating manifests...")
+            self._create_manifests(library_part, part_pkg_dir)
+            logger.info("  OK.")
+
+            logger.info("\nImport complete.")
+            self.addPartFinished.emit(library_part)
+        except Exception as e:
+            logger.error(f"\n[ERROR] An exception occurred: {e}", exc_info=True)
+            self.addPartFinished.emit(None)
 
     def get_all_parts(self) -> list[LibraryPart]:
         """Scans the library and returns a list of all parts."""
@@ -69,7 +118,6 @@ class LibraryManager:
                             part_data = json.load(f)
                             part = LibraryPart.model_validate(part_data)
 
-                            # Hydrate status fields by reading element manifests
                             part.status.footprint = self._get_element_status(
                                 "pkg", part.footprint.uuid, "footprint"
                             )
@@ -85,7 +133,9 @@ class LibraryManager:
 
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
-                        print(f"Error loading part manifest {manifest_path}: {e}")
+                        logger.error(
+                            f"Error loading part manifest {manifest_path}: {e}"
+                        )
         return parts
 
     def _get_element_status(
@@ -99,7 +149,7 @@ class LibraryManager:
         manifest_path = element_dir / f"{element_uuid}.{element_type}.wp"
 
         if not manifest_path.exists():
-            return "needs_review"  # Default if manifest is missing
+            return "needs_review"
 
         try:
             with open(manifest_path, "r") as f:
@@ -108,16 +158,15 @@ class LibraryManager:
         except (json.JSONDecodeError, IOError):
             return "error"
 
-
-    def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:
+    def _map_search_result_to_library_part(
+        self, search_result: SearchResult
+    ) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
-        # Convert SearchResult to dict, then validate as LibraryPart
         search_dict = search_result.model_dump()
-        
-        # Ensure UUID is set (LibraryPart requires it, SearchResult allows None)
-        if not search_dict.get('uuid'):
-            search_dict['uuid'] = search_result.uuid or f"search-{search_result.lcsc_id}"
-        
+        if not search_dict.get("uuid"):
+            search_dict["uuid"] = (
+                search_result.uuid or f"search-{search_result.lcsc_id}"
+            )
         return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(
@@ -129,9 +178,8 @@ class LibraryManager:
             new_paths["footprint_png_cache_path"] = self._copy_asset(
                 search_result.footprint_png_cache_path, pkg_dir, "footprint.png"
             )
-        # Also copy the SVG if it exists, although we don't track its path in the result model
         if search_result.footprint_svg_cache_path:
-             self._copy_asset(
+            self._copy_asset(
                 search_result.footprint_svg_cache_path, pkg_dir, "footprint.svg"
             )
         if search_result.hero_image_cache_path:
@@ -164,7 +212,9 @@ class LibraryManager:
         with open(manifest_path, "w") as f:
             f.write(library_part.model_dump_json(indent=2))
 
-        footprint_manifest_path = pkg_dir / f"{library_part.footprint.uuid}.footprint.wp"
+        footprint_manifest_path = (
+            pkg_dir / f"{library_part.footprint.uuid}.footprint.wp"
+        )
         footprint_manifest = {
             "version": 1,
             "status": "needs_review",
