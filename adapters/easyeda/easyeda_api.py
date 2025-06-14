@@ -98,22 +98,33 @@ class EasyEDAApi(SearchEngine):
             return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
         return None, None
 
-    def _generate_symbol_png_from_data(
+    def _generate_symbol_svg_and_png(
         self, lcsc_id: str, svg_data: dict
-    ) -> Optional[str]:
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Generates symbol SVG and PNG.
+        Returns (svg_path, png_path) tuple.
+        """
+        svg_cache_path = self._get_cache_path(f"symbol_{lcsc_id}", "svg")
         png_cache_path = self._get_cache_path(f"symbol_{lcsc_id}", "png")
-        if png_cache_path.exists():
-            return str(png_cache_path.resolve())
+
+        if svg_cache_path.exists() and png_cache_path.exists():
+            return str(svg_cache_path.resolve()), str(png_cache_path.resolve())
+
         try:
             svg_string = svg_data["result"][0]["svg"]
+            self._save_to_cache(svg_cache_path, svg_string.encode("utf-8"))
         except (IndexError, KeyError, TypeError):
             logger.warning(f"No symbol SVG found in svg_data for {lcsc_id}.")
-            return None
+            return None, None
+
         png_data = render_svg_to_png_bytes(svg_string.encode("utf-8"), 1024, 1024)
         if png_data:
             self._save_to_cache(png_cache_path, png_data)
-            return str(png_cache_path.resolve())
-        return None
+            return str(svg_cache_path.resolve()), str(png_cache_path.resolve())
+
+        return str(svg_cache_path.resolve()), None
+
 
     def search(self, search_term: str) -> List[SearchResult]:
         payload = {
@@ -187,9 +198,12 @@ class EasyEDAApi(SearchEngine):
 
         svg_data = self.get_and_cache_svg_data(search_result.lcsc_id)
         if svg_data:
-            search_result.symbol_png_cache_path = self._generate_symbol_png_from_data(
+            symbol_svg_path, symbol_png_path = self._generate_symbol_svg_and_png(
                 search_result.lcsc_id, svg_data
             )
+            search_result.symbol_svg_cache_path = symbol_svg_path
+            search_result.symbol_png_cache_path = symbol_png_path
+
             footprint_png_path, footprint_svg_path = (
                 self._generate_footprint_png_from_data(search_result.lcsc_id, svg_data)
             )

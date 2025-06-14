@@ -69,16 +69,25 @@ class LibraryManager(QObject):
             logger.info("Creating library directories...")
             (WEBPARTS_DIR / library_part.uuid).mkdir(parents=True, exist_ok=True)
             part_pkg_dir.mkdir(parents=True, exist_ok=True)
+            part_sym_dir = LibrePCBElement.SYMBOL.dir / library_part.symbol.uuid
+            part_sym_dir.mkdir(parents=True, exist_ok=True)
             logger.info("  OK.")
 
             logger.info("Copying assets...")
             self._copy_assets_and_get_new_paths(
-                search_result, part_pkg_dir, (WEBPARTS_DIR / library_part.uuid)
+                search_result,
+                part_pkg_dir,
+                part_sym_dir,
+                (WEBPARTS_DIR / library_part.uuid),
             )
             logger.info("  OK.")
 
             logger.info("Saving footprint source JSON...")
             self._save_footprint_source_json(search_result, part_pkg_dir)
+            logger.info("  OK.")
+
+            logger.info("Saving symbol source JSON...")
+            self._save_symbol_source_json(search_result, part_sym_dir)
             logger.info("  OK.")
 
             logger.info("--- Starting Footprint Generation ---")
@@ -126,12 +135,45 @@ class LibraryManager(QObject):
                             part.status.device = self._get_element_status(
                                 LibrePCBElement.DEVICE, part.uuid
                             )
+
+                            # Hydrate asset paths
+                            self._hydrate_asset_paths(part)
                             
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
                         logger.error(f"❌ Failed to load part from {manifest_path}: {e}")
         
         return parts
+
+    def _hydrate_asset_paths(self, part: LibraryPart):
+        """
+        Dynamically constructs and adds absolute paths for a part's assets.
+        """
+        # Hero image
+        hero_image_path = WEBPARTS_DIR / part.uuid / WebPartsFilename.HERO_IMAGE.value
+        if hero_image_path.exists():
+            part.image.url = str(hero_image_path.resolve())
+
+        # Symbol images
+        if part.symbol and part.symbol.uuid:
+            sym_dir = LibrePCBElement.SYMBOL.dir / part.symbol.uuid
+            symbol_png_path = sym_dir / WebPartsFilename.SYMBOL_PNG.value
+            symbol_svg_path = sym_dir / WebPartsFilename.SYMBOL_SVG.value
+            if symbol_png_path.exists():
+                part.symbol.png_path = str(symbol_png_path.resolve())
+            if symbol_svg_path.exists():
+                part.symbol.svg_path = str(symbol_svg_path.resolve())
+
+        # Footprint images
+        if part.footprint and part.footprint.uuid:
+            pkg_dir = LibrePCBElement.PACKAGE.dir / part.footprint.uuid
+            footprint_png_path = pkg_dir / WebPartsFilename.FOOTPRINT_PNG.value
+            footprint_svg_path = pkg_dir / WebPartsFilename.FOOTPRINT_SVG.value
+            if footprint_png_path.exists():
+                part.footprint.png_path = str(footprint_png_path.resolve())
+            if footprint_svg_path.exists():
+                part.footprint.svg_path = str(footprint_svg_path.resolve())
+
 
     def _get_element_status(
         self, element: LibrePCBElement, element_uuid: str
@@ -144,10 +186,15 @@ class LibraryManager(QObject):
         lp_path = element.get_lp_path(element_uuid)
         wp_path = element.get_wp_path(element_uuid)
         
-        if not lp_path.exists():
-            return StatusValue.UNAVAILABLE
-            
         if not wp_path.exists():
+            # If the .wp file doesn't exist, but the .lp file does, it's an error.
+            if lp_path.exists():
+                return StatusValue.ERROR
+            # If neither exist, it's simply unavailable.
+            return StatusValue.UNAVAILABLE
+
+        # If the .wp manifest exists, but the .lp file doesn't, it needs review.
+        if not lp_path.exists():
             return StatusValue.NEEDS_REVIEW
             
         try:
@@ -167,21 +214,46 @@ class LibraryManager(QObject):
         return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(
-        self, search_result: SearchResult, pkg_dir: Path, webparts_dir: Path
+        self,
+        search_result: SearchResult,
+        pkg_dir: Path,
+        sym_dir: Path,
+        webparts_dir: Path,
     ) -> Dict[str, str]:
         """Copies assets and returns a dict of the new, permanent paths."""
         new_paths = {}
+        # Footprint assets
         if search_result.footprint_png_cache_path:
             new_paths["footprint_png_cache_path"] = self._copy_asset(
-                search_result.footprint_png_cache_path, pkg_dir, WebPartsFilename.FOOTPRINT_PNG.value
+                search_result.footprint_png_cache_path,
+                pkg_dir,
+                WebPartsFilename.FOOTPRINT_PNG.value,
             )
         if search_result.footprint_svg_cache_path:
-             self._copy_asset(
-                search_result.footprint_svg_cache_path, pkg_dir, WebPartsFilename.FOOTPRINT_SVG.value
+            self._copy_asset(
+                search_result.footprint_svg_cache_path,
+                pkg_dir,
+                WebPartsFilename.FOOTPRINT_SVG.value,
             )
+        # Symbol assets
+        if search_result.symbol_png_cache_path:
+            new_paths["symbol_png_cache_path"] = self._copy_asset(
+                search_result.symbol_png_cache_path,
+                sym_dir,
+                WebPartsFilename.SYMBOL_PNG.value,
+            )
+        if search_result.symbol_svg_cache_path:
+            self._copy_asset(
+                search_result.symbol_svg_cache_path,
+                sym_dir,
+                WebPartsFilename.SYMBOL_SVG.value,
+            )
+        # Other assets
         if search_result.hero_image_cache_path:
             new_paths["hero_image_cache_path"] = self._copy_asset(
-                search_result.hero_image_cache_path, webparts_dir, WebPartsFilename.HERO_IMAGE.value
+                search_result.hero_image_cache_path,
+                webparts_dir,
+                WebPartsFilename.HERO_IMAGE.value,
             )
         return new_paths
 
@@ -193,6 +265,14 @@ class LibraryManager(QObject):
                 with open(source_json_path, "w") as f:
                     json.dump(package_detail, f, indent=2)
 
+    def _save_symbol_source_json(self, search_result: SearchResult, sym_dir: Path):
+        """Saves the symbol portion of the raw CAD data."""
+        if search_result.raw_cad_data:
+            if symbol_detail := search_result.raw_cad_data.get("dataStr"):
+                source_json_path = sym_dir / WebPartsFilename.SOURCE_JSON.value
+                with open(source_json_path, "w") as f:
+                    json.dump(symbol_detail, f, indent=2)
+
     def _copy_asset(self, src_path_str: str, dest_dir: Path, dest_filename: str) -> str:
         """Copies a single asset from cache to library and returns its new path."""
         src_path = Path(src_path_str)
@@ -203,18 +283,21 @@ class LibraryManager(QObject):
         return src_path_str
 
     def _create_manifests(self, library_part: LibraryPart, pkg_dir: Path):
-        """Creates the central part.wp and the footprint element manifest."""
+        """Creates the central part.wp and element manifests."""
         manifest_dir = WEBPARTS_DIR / library_part.uuid
         manifest_path = manifest_dir / WebPartsFilename.PART_MANIFEST.value
         with open(manifest_path, "w") as f:
             f.write(library_part.model_dump_json(indent=2))
-        
-        # Use the get_wp_path helper for consistency
-        footprint_manifest_path = LibrePCBElement.PACKAGE.get_wp_path(library_part.footprint.uuid)
-        footprint_manifest = {
-            "version": 1,
-            "status": StatusValue.NEEDS_REVIEW.value,
-            "validation": {"errors": [], "warnings": []},
-        }
-        with open(footprint_manifest_path, "w") as f:
-            json.dump(footprint_manifest, f, indent=2)
+
+        def create_element_manifest(element: LibrePCBElement, uuid: str):
+            manifest_path = element.get_wp_path(uuid)
+            manifest_data = {
+                "version": 1,
+                "status": StatusValue.NEEDS_REVIEW.value,
+                "validation": {"errors": [], "warnings": []},
+            }
+            with open(manifest_path, "w") as f:
+                json.dump(manifest_data, f, indent=2)
+
+        create_element_manifest(LibrePCBElement.PACKAGE, library_part.footprint.uuid)
+        create_element_manifest(LibrePCBElement.SYMBOL, library_part.symbol.uuid)

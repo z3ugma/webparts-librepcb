@@ -35,6 +35,7 @@ class SearchResult(BaseModel):
     # These hold temporary cache paths for the UI and are excluded from any serialization.
     hero_image_cache_path: Optional[str] = Field(None, exclude=True)
     symbol_png_cache_path: Optional[str] = Field(None, exclude=True)
+    symbol_svg_cache_path: Optional[str] = Field(None, exclude=True)
     footprint_png_cache_path: Optional[str] = Field(None, exclude=True)
     footprint_svg_cache_path: Optional[str] = Field(None, exclude=True)
     

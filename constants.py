@@ -17,6 +17,7 @@ class WebPartsFilename(Enum):
     FOOTPRINT_PNG = "footprint.png"
     SYMBOL_PNG = "symbol.png"
     FOOTPRINT_SVG = "footprint.svg"
+    SYMBOL_SVG = "symbol.svg"
 
 # --- Status & Workflow ---
 WORKFLOW_MAPPING = {

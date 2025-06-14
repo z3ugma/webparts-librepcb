@@ -11,10 +11,14 @@ class ImageInfo(BaseModel):
 
 class SymbolInfo(BaseModel):
     uuid: Optional[str] = None
+    png_path: Optional[str] = None
+    svg_path: Optional[str] = None
 
 class FootprintInfo(BaseModel):
     uuid: Optional[str] = None
     package_type: Optional[str] = None
+    png_path: Optional[str] = None
+    svg_path: Optional[str] = None
 
 class ComponentInfo(BaseModel):
     uuid: Optional[str] = None

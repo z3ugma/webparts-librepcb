@@ -206,14 +206,12 @@ class LibraryElementPage(QWidget):
         else:
             self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
         
-        footprint_path = LibrePCBElement.PACKAGE.dir / part.footprint.uuid / WebPartsFilename.FOOTPRINT_PNG.value
-        symbol_path = LibrePCBElement.PACKAGE.dir.parent / "webparts" / part.uuid / WebPartsFilename.SYMBOL_PNG.value
-        
+        # Use the hydrated paths directly from the LibraryPart model
         self.page_FootprintReview.set_footprint_image(
-            QPixmap(str(footprint_path)) if footprint_path.exists() else QPixmap()
+            QPixmap(part.footprint.png_path) if part.footprint and part.footprint.png_path else QPixmap()
         )
         self.page_SymbolReview.set_symbol_image(
-            QPixmap(str(symbol_path)) if symbol_path.exists() else QPixmap()
+            QPixmap(part.symbol.png_path) if part.symbol and part.symbol.png_path else QPixmap()
         )
 
         self._update_workflow_status(part)
