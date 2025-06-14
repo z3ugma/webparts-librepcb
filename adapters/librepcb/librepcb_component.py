@@ -12,6 +12,7 @@ from models.symbol import Symbol
 from .librepcb_uuid import create_derived_uuidv4
 from .s_expression import SExpSymbol, serialize_to_sexpr
 
+import constants as const
 
 class LibrePCBComponentSerializer:
     def _serialize_signals(self, symbol: Symbol) -> List[Tuple]:
@@ -155,7 +156,7 @@ class LibrePCBComponentSerializer:
                 ("description", [symbol.description or ""]),
                 ("keywords", [", ".join(symbol.keywords) if symbol.keywords else ""]),
                 ("author", [symbol.author or "EasyEDA Converter"]),
-                ("version", [symbol.version_str or "0.1"]),
+                ("version", [symbol.version_str or const.DEFAULT_VERSION]),
                 ("created", [symbol.created_at or datetime.now()]),
                 ("deprecated", [False]),
                 (

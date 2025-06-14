@@ -9,6 +9,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import QApplication, QMessageBox, QStackedWidget, QWidget
 
+from adapters.search_engine import Vendor
 from library_manager import LibraryManager
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
@@ -39,7 +40,7 @@ class SearchWorker(QObject):
         super().__init__()
         self.api_service = api_service
 
-    def start_search(self, vendor, search_term):
+    def start_search(self, vendor: Vendor, search_term: str):
         try:
             self.search_completed.emit(self.api_service.search(vendor, search_term))
         except Exception as e:
@@ -55,12 +56,13 @@ class ImageWorker(QObject):
         super().__init__()
         self.api_service = api_service
 
-    def load_image(self, vendor: str, image_url: str, image_type: str):
+    def load_image(self, vendor: Vendor, image_url: str, image_type: str):
         try:
-            image_data, cache_path = self.api_service.download_image_from_url(
+            result = self.api_service.download_image_from_url(
                 vendor, image_url
             )
-            if image_data:
+            if result:
+                image_data, cache_path = result
                 self.image_loaded.emit(image_data, image_type, cache_path)
             else:
                 self.image_failed.emit("Failed to download image", image_type)
@@ -88,9 +90,9 @@ class ComponentWorker(QObject):
 
 
 class WorkbenchController(QObject):
-    request_search = Signal(str, str)
+    request_search = Signal(Vendor, str)
     request_hydration = Signal(SearchResult)
-    request_image = Signal(str, str, str)
+    request_image = Signal(Vendor, str, str)
 
     def __init__(self, window):
         super().__init__()
@@ -217,7 +219,7 @@ class WorkbenchController(QObject):
         self.page_Search.set_search_button_enabled(False)
         self.page_Search.set_search_button_text("Searching...")
         self.window.statusBar().showMessage(f"Searching for '{search_term}'...")
-        self.request_search.emit("LCSC", search_term)
+        self.request_search.emit(Vendor.LCSC, search_term)
 
     def on_search_completed(self, results: List[SearchResult]):
         self.page_Search.update_search_results(results)
@@ -230,7 +232,7 @@ class WorkbenchController(QObject):
         self.page_Search.set_search_button_enabled(True)
         self.page_Search.set_search_button_text("Search")
 
-    def on_request_image(self, vendor: str, image_url: str, image_type: str):
+    def on_request_image(self, vendor: Vendor, image_url: str, image_type: str):
         self.request_image.emit(vendor, image_url, image_type)
 
     def on_image_loaded(self, image_data: bytes, image_type: str, cache_path: str):
@@ -247,6 +249,11 @@ class WorkbenchController(QObject):
             self.page_Search.hero_image_widget.show_image_not_available()
 
     def on_hydration_completed(self, result: SearchResult):
+        if not result:
+            logger.error("Hydration completed with an empty result.")
+            self.on_hydration_failed("Received no data.")
+            return
+
         self.current_search_result = result
         self.page_Search.set_symbol_image(
             QPixmap(result.symbol_png_cache_path)
@@ -258,8 +265,6 @@ class WorkbenchController(QObject):
             if result.footprint_png_cache_path
             else QPixmap()
         )
-        # Note: set_details() is now called immediately in on_search_item_selected()
-
         assets_loaded = (
             result.symbol_png_cache_path is not None
             and result.footprint_png_cache_path is not None
@@ -277,13 +282,14 @@ class WorkbenchController(QObject):
         self.window.statusBar().showMessage(f"Error: {error_message}", 5000)
 
     def on_search_item_selected(self, result: SearchResult):
+        if result and isinstance(result.vendor, str):
+            result.vendor = Vendor(result.vendor)
+            
         self.current_search_result = result
         self.page_Search.clear_images()
         self.page_Search.add_to_library_button.setEnabled(False)
         if result:
-            # Start hero image download immediately
             self.page_Search.set_details(result)
-            # Start symbol and footprint hydration in parallel
             self.page_Search.set_symbol_loading(True)
             self.page_Search.set_footprint_loading(True)
             self.request_hydration.emit(result)
@@ -293,7 +299,6 @@ class WorkbenchController(QObject):
             if thread.isRunning():
                 thread.quit()
                 thread.wait()
-
 
 def main():
     app = QApplication(sys.argv)

@@ -12,9 +12,11 @@ from PySide6.QtUiTools import QUiLoader
 
 from library_manager import LibraryManager
 from models.library_part import LibraryPart
+from models.status import StatusValue
 from .part_info_widget import PartInfoWidget
 from .hero_image_widget import HeroImageWidget
-import constants as const
+from models.elements import LibrePCBElement
+from constants import WebPartsFilename, UIText
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +61,15 @@ class LibraryLoaderWorker(QObject):
             parts_lite = []
             for part in self.manager.get_all_parts():
                 flags = {
-                    "footprint": part.status.footprint == const.STATUS_APPROVED,
-                    "symbol": part.status.symbol == const.STATUS_APPROVED,
-                    "component": part.status.component == const.STATUS_APPROVED,
-                    "device": part.status.device == const.STATUS_APPROVED,
+                    "footprint": part.status.footprint.value,
+                    "symbol": part.status.symbol.value,
+                    "component": part.status.component.value,
+                    "device": part.status.device.value,
                 }
-                hero = os.path.join(self.manager.webparts_dir, part.uuid, const.FILENAME_HERO_IMAGE)
+                hero = LibrePCBElement.PACKAGE.dir.parent / "webparts" / part.uuid / WebPartsFilename.HERO_IMAGE.value
                 parts_lite.append(LibraryPartLite(
                     part.uuid, part.vendor, part.part_name, part.lcsc_id, 
-                    part.description, flags, hero
+                    part.description, flags, str(hero)
                 ))
             self.parts_loaded.emit(parts_lite)
         except Exception as e:
@@ -76,7 +78,7 @@ class LibraryLoaderWorker(QObject):
 
 
 class PartHydratorWorker(QObject):
-    hydration_ready = Signal(object)
+    hydration_ready = Signal(object, str)  # (part, uuid) to identify which row to update
     hydration_failed = Signal(str)
 
     def __init__(self):
@@ -94,9 +96,11 @@ class PartHydratorWorker(QObject):
             if lite.hero_path and os.path.exists(lite.hero_path):
                 pixmap.load(lite.hero_path)
             part._hero_pixmap = pixmap
-            self.hydration_ready.emit((lite, part))
+            
+            # Emit both the part data AND the UUID to identify which tree row to update
+            self.hydration_ready.emit(part, lite.uuid)
         except Exception as e:
-            logger.error("Part hydration failed", exc_info=True)
+            logger.error(f"❌ Part hydration failed for {lite.uuid}: {e}", exc_info=True)
             self.hydration_failed.emit(str(e))
 
 
@@ -174,6 +178,7 @@ class LibraryPage(QWidget):
                 self.tree.clicked_empty_area.connect(self.on_empty_area_clicked)
 
         self.current_selected_part = None
+        self.last_hydration_request_uuid = None
         self.refresh_library()
 
     def refresh_library(self):
@@ -208,13 +213,28 @@ class LibraryPage(QWidget):
             ])
             item.setData(0, Qt.UserRole, lite)
             for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=4):
-                item.setText(col, const.STATUS_ICON_MAP[const.STATUS_APPROVED] if lite.status_flags.get(key) else '✘')
+                status_value = lite.status_flags.get(key)
+                if status_value == "approved":
+                    icon = StatusValue.APPROVED.icon
+                elif status_value == "unavailable":
+                    icon = StatusValue.UNAVAILABLE.icon
+                elif status_value == "needs_review":
+                    icon = StatusValue.NEEDS_REVIEW.icon
+                else:
+                    icon = StatusValue.ERROR.icon
+                    
+                item.setText(col, icon)
             self.tree.addTopLevelItem(item)
         self.loader_thread.quit()
 
     def on_tree_selection_changed(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         if current:
             lite: LibraryPartLite = current.data(0, Qt.UserRole)
+            logger.debug(f"🖱️ Selected {lite.lcsc_id} - triggering fresh disk read")
+            
+            # Track the latest request
+            self.last_hydration_request_uuid = lite.uuid
+                
             if self.hero_image_widget:
                 self.hero_image_widget.show_loading()
             if self.part_info_widget:
@@ -223,51 +243,73 @@ class LibraryPage(QWidget):
                 except RuntimeError:
                     logger.warning("PartInfoWidget already deleted, skipping clear()")
             if self.label_3dModelStatus:
-                self.label_3dModelStatus.setText("3D Model: (Loading...)")
+                self.label_3dModelStatus.setText(UIText.LOADING.value)
             if self.datasheetLink:
-                self.datasheetLink.setText('Datasheet: <a href="#">(Loading...)</a>')
+                self.datasheetLink.setText(f'Datasheet: <a href="#">({UIText.LOADING.value})</a>')
             if self.edit_part_button:
                 self.edit_part_button.setEnabled(True)
             self.hydrator_worker.hydrate(lite)
         else:
+            logger.debug(f"🔄 Deselected row - clearing sidebar")
             self.clear_selection()
 
-    def on_hydration_ready(self, data: tuple):
-        lite, part = data
-        self.current_selected_part = part
-        pixmap = getattr(part, '_hero_pixmap', None)
-        if self.hero_image_widget:
-            if isinstance(pixmap, QPixmap) and not pixmap.isNull():
-                self.hero_image_widget.show_pixmap(pixmap)
-            else:
-                self.hero_image_widget.show_no_image()
-        if self.part_info_widget:
-            try:
+    def on_hydration_ready(self, part, hydrated_uuid: str):
+        """Handle hydration completion and update the specific tree row by UUID."""
+        logger.debug(f"💧 Hydration complete for {part.lcsc_id} (UUID: {hydrated_uuid})")
+        
+        # Only update sidebar if this hydration matches the *last user request*
+        if self.last_hydration_request_uuid == hydrated_uuid:
+            logger.info(f"✅ Hydration matches last request. Updating sidebar for {part.lcsc_id}")
+            self.current_selected_part = part
+            pixmap = getattr(part, '_hero_pixmap', None)
+            if self.hero_image_widget:
+                if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+                    self.hero_image_widget.show_pixmap(pixmap)
+                else:
+                    self.hero_image_widget.show_no_image()
+            if self.part_info_widget:
                 self.part_info_widget.set_component(part)
-            except RuntimeError:
-                logger.warning("PartInfoWidget already deleted, skipping set_component()")
-        if self.label_3dModelStatus:
-            self.label_3dModelStatus.setText("3D Model: Found" if part.has_3d_model else "3D Model: Not Found")
-        if self.datasheetLink:
-            if part.datasheet_url:
-                self.datasheetLink.setText(f'<a href="{part.datasheet_url}">Open Datasheet</a>')
-            else:
-                self.datasheetLink.setText("Datasheet: Not Available")
-        items = self.tree.selectedItems()
-        if items:
-            item = items[0]
+            if self.label_3dModelStatus:
+                self.label_3dModelStatus.setText("3D Model: Found" if part.has_3d_model else "3D Model: Not Found")
+            if self.datasheetLink:
+                if part.datasheet_url:
+                    self.datasheetLink.setText(f'<a href="{part.datasheet_url}">Open Datasheet</a>')
+                else:
+                    self.datasheetLink.setText("Datasheet: Not Available")
+            if self.edit_part_button:
+                self.edit_part_button.setEnabled(True)
+        else:
+            logger.info(f"⚠️ Stale hydration received for {part.lcsc_id}. Ignoring sidebar update.")
+        
+        # ALWAYS update the tree icons for the specific row (by UUID) to allow "refresh on selection"
+        target_item = self._find_tree_item_by_uuid(hydrated_uuid)
+        if target_item:
+            logger.debug(f"🔄 Updating tree icons for {part.lcsc_id} after fresh disk read")
             for col, key in enumerate(['footprint', 'symbol', 'component', 'device'], start=4):
-                val = getattr(part.status, key) == const.STATUS_APPROVED
-                item.setText(col, const.STATUS_ICON_MAP[const.STATUS_APPROVED] if val else '✘')
-        if self.edit_part_button:
-            self.edit_part_button.setEnabled(True)
+                val = getattr(part.status, key)
+                target_item.setText(col, val.icon)
+        else:
+            logger.warning(f"❌ Could not find tree item for UUID {hydrated_uuid}")
+
+    def _find_tree_item_by_uuid(self, target_uuid: str) -> QTreeWidgetItem:
+        """Find a tree item by its associated LibraryPartLite UUID."""
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            lite = item.data(0, Qt.UserRole)
+            if lite and lite.uuid == target_uuid:
+                return item
+        return None
 
     def on_empty_area_clicked(self):
         self.clear_selection()
 
     def on_edit_part_clicked(self):
+        logger.info(f"🖱️ Edit button clicked. Current selected part: {self.current_selected_part}")
         if self.current_selected_part:
+            logger.info(f"🚀 Launching editor for {self.current_selected_part.lcsc_id}")
             self.edit_part_requested.emit(self.current_selected_part)
+        else:
+            logger.warning("❌ No part selected, cannot launch editor")
 
     def on_tree_item_double_clicked(self, item, column):
         self.on_edit_part_clicked()

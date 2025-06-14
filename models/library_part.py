@@ -38,8 +38,8 @@ class LibraryPart(BaseModel):
     component: ComponentInfo = Field(default_factory=ComponentInfo)
     device: DeviceInfo = Field(default_factory=DeviceInfo)
 
-    # --- Approval Status ---
-    status: Status = Field(default_factory=Status)
+    # --- Approval Status (not serialized - read from individual element manifests) ---
+    status: Status = Field(default_factory=Status, exclude=True)
 
     # --- Hydrated Fields ---
     has_3d_model: bool = Field(False)

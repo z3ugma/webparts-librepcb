@@ -1,39 +1,41 @@
 from pathlib import Path
+from enum import Enum
 
 # --- Core Library Structure ---
 LIBRARY_DIR = Path("./WebParts.lplib")
 WEBPARTS_DIR = LIBRARY_DIR / "webparts"
-PKG_DIR = LIBRARY_DIR / "pkg"
-SYM_DIR = LIBRARY_DIR / "sym"
-CMP_DIR = LIBRARY_DIR / "cmp"
-DEV_DIR = LIBRARY_DIR / "dev"
+CACHE_DIR = Path("image_cache")
 
-# --- Standard Filenames ---
-FILENAME_HERO_IMAGE = "hero.png"
-FILENAME_CONVERSION_LOG = "conversion.log"
-FILENAME_PACKAGE_LP = "package.lp"
-FILENAME_SYMBOL_LP = "symbol.lp"
-FILENAME_PART_MANIFEST = "part.wp"
-FILENAME_SOURCE_JSON = "source.json"
-FILENAME_FOOTPRINT_WP = "footprint.wp" # Example for element manifests
+# --- WebParts Internal Filenames ---
+class WebPartsFilename(Enum):
+    """Filenames used internally by the WebParts application."""
+    HERO_IMAGE = "hero.png"
+    CONVERSION_LOG = "conversion.log"
+    PART_MANIFEST = "part.wp"
+    SOURCE_JSON = "source.json"
+    FOOTPRINT_MANIFEST = "footprint.wp"
+    FOOTPRINT_PNG = "footprint.png"
+    SYMBOL_PNG = "symbol.png"
+    FOOTPRINT_SVG = "footprint.svg"
 
 # --- Status & Workflow ---
-STATUS_APPROVED = "approved"
-STATUS_NEEDS_REVIEW = "needs_review"
-STATUS_ERROR = "error"
-STATUS_UNAVAILABLE = "unavailable"
-
-STATUS_ICON_MAP = {
-    STATUS_APPROVED: "✔",
-    STATUS_NEEDS_REVIEW: "⏳",
-    STATUS_ERROR: "✘",
-    STATUS_UNAVAILABLE: "❓",
-}
-
-# Maps UI workflow step names to the internal element type names
 WORKFLOW_MAPPING = {
-    'footprint': 'pkg',
-    'symbol': 'sym',
-    'assembly': 'cmp',
-    'finalize': 'dev',
+    'footprint': 'footprint',
+    'symbol': 'symbol',
+    'assembly': 'component',
+    'finalize': 'device',
 }
+
+# --- API & Network ---
+USER_AGENT = "WebParts v0.1"
+
+# --- UI Text ---
+class UIText(Enum):
+    LOADING = "Loading..."
+    NO_IMAGE = "No Image"
+    IMAGE_NOT_AVAILABLE = "Image Not Available"
+    SELECT_PART = "Select a part to view details"
+
+# --- Default Metadata ---
+DEFAULT_VERSION = "0.1"
+DEFAULT_AUTHOR = "Fred Turkington"

@@ -6,6 +6,7 @@ import uuid as uuid_module  # To avoid conflict with our Pydantic UUID
 from datetime import datetime
 from typing import List, Tuple
 
+import constants as const
 from models.footprint import (  # Relative import if in a package; from footprint_model import ( # Or direct if in the same folder and you add to sys.path
     AssemblyType,
     Footprint,
@@ -318,7 +319,7 @@ class LibrePCBFootprintSerializer:
                     [uuid_module.UUID("1d2630f1-c375-49f0-a0dc-2446735d82f4")],
                 ),
                 ("assembly_type", [SExpSymbol(AssemblyType.SMT)]),
-                ("version", ["0.1"]),
+                ("version", [footprint.version_str or const.DEFAULT_VERSION]),
                 ("created", [datetime(2024, 12, 27, 22, 45, 27)]),
                 ("deprecated", [False]),
             ]

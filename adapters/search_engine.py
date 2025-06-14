@@ -1,75 +1,70 @@
-from abc import ABC, abstractmethod
 import hashlib
-import logging
+import os
+from abc import ABC, abstractmethod
+from enum import Enum
 from pathlib import Path
-from typing import List, Optional
-from urllib.parse import urlparse
+from typing import List, Optional, Tuple
+
 import requests
 
 from models.search_result import SearchResult
+from constants import CACHE_DIR, USER_AGENT
 
-logger = logging.getLogger(__name__)
-CACHE_DIR = Path("image_cache")
-CACHE_DIR.mkdir(exist_ok=True)  # Ensure cache directory exists on module load
-
+class Vendor(Enum):
+    LCSC = "LCSC"
 
 class SearchEngine(ABC):
-    """
-    Abstract base class for a component search engine, including default
-    implementations for common tasks like cached downloads.
-    """
+    def __init__(self) -> None:
+        CACHE_DIR.mkdir(exist_ok=True)
 
     @abstractmethod
-    def search(self, search_term: str) -> List[SearchResult]:
+    def search(self, vendor: Vendor, search_term: str) -> List[SearchResult]:
         """Perform a search for a given term."""
         pass
 
     @abstractmethod
     def get_fully_hydrated_search_result(
         self, search_result: SearchResult
-    ) -> Optional[SearchResult]:
+    ) -> SearchResult:
         """Fetch all detailed data for a given search result."""
         pass
 
-    def _get_cache_path(self, url: str, file_type: str) -> Path:
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return CACHE_DIR / f"{url_hash}.{file_type}"
-
-    def _load_from_cache(self, cache_path: Path) -> Optional[bytes]:
-        if cache_path.exists():
-            try:
-                return cache_path.read_bytes()
-            except Exception as e:
-                logger.warning(f"Failed to read cache file {cache_path}: {e}")
-        return None
-
-    def _save_to_cache(self, cache_path: Path, data: bytes) -> None:
-        try:
-            cache_path.write_bytes(data)
-            logger.info(f"💾 Saved to cache: {cache_path}")
-        except Exception as e:
-            logger.warning(f"Failed to save cache file {cache_path}: {e}")
-
-    def download_image_from_url(self, vendor: str, image_url: str) -> Optional[tuple[bytes, str]]:
+    def download_image_from_url(
+        self, vendor: Vendor, image_url: str
+    ) -> Optional[Tuple[bytes, str]]:
         if not image_url:
             return None
-        # Use pathlib for robust path manipulation
-        path = Path(urlparse(image_url).path)
-        file_ext = path.suffix
-        file_type = file_ext[1:].lower() if file_ext else "jpg"
-        
-        cache_path = self._get_cache_path(image_url, file_type)
+        cache_path = self._get_cache_path_for_image(image_url)
         cached_data = self._load_from_cache(cache_path)
         if cached_data:
             return cached_data, str(cache_path.resolve())
-            
+        headers = {
+            "User-Agent": USER_AGENT,
+        }
         try:
-            headers = {"User-Agent": "WebParts/0.1"}
-            response = requests.get(image_url, headers=headers)
-            if response.status_code == requests.codes.ok:
-                data = response.content
-                self._save_to_cache(cache_path, data)
-                return data, str(cache_path.resolve())
-        except Exception as e:
-            logger.error(f"Error downloading {image_url}: {e}")
+            r = requests.get(url=image_url, headers=headers)
+            if r.status_code == 200:
+                self._save_to_cache(cache_path, r.content)
+                return r.content, str(cache_path.resolve())
+        except requests.exceptions.RequestException:
+            # Network error or other request failure
+            pass
         return None
+
+    def _get_cache_path_for_image(self, image_url: str) -> Path:
+        _, ext = os.path.splitext(image_url)
+        if not ext:
+            ext = ".jpg"  # Default extension
+        filename = hashlib.md5(image_url.encode()).hexdigest() + ext
+        return CACHE_DIR / filename
+
+    def _get_cache_path(self, name: str, extension: str) -> Path:
+        return CACHE_DIR / f"{name}.{extension}"
+
+    def _load_from_cache(self, path: Path) -> Optional[bytes]:
+        if path.exists():
+            return path.read_bytes()
+        return None
+
+    def _save_to_cache(self, path: Path, data: bytes):
+        path.write_bytes(data)

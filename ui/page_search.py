@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from adapters.search_engine import Vendor
 from library_manager import LibraryManager
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
@@ -59,7 +60,7 @@ class AddToLibraryDialog(QDialog):
         layout = QVBoxLayout(self)
         self.log_view = QPlainTextEdit(self)
         self.log_view.setReadOnly(True)
-        self.log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.log_view.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         font = self.log_view.font()
         font.setFamily("monospace")
         self.log_view.setFont(font)
@@ -130,7 +131,7 @@ class SearchPage(QWidget):
     search_requested = Signal(str)
     item_selected = Signal(object)
     part_added_to_library = Signal(object)
-    request_image = Signal(str, str, str)
+    request_image = Signal(Vendor, str, str)  # vendor_enum, image_url, image_type
     back_to_library_requested = Signal()
 
     def __init__(self, parent=None):
@@ -353,7 +354,13 @@ class SearchPage(QWidget):
         if self.hero_image_widget:
             if result.image.url:
                 self.hero_image_widget.show_loading()
-                self.request_image.emit(result.vendor, result.image.url, "hero")
+                # Convert string vendor to Vendor enum
+                try:
+                    vendor_enum = Vendor(result.vendor)
+                    self.request_image.emit(vendor_enum, result.image.url, "hero")
+                except ValueError:
+                    logger.warning(f"Unknown vendor: {result.vendor}")
+                    self.hero_image_widget.show_image_not_available()
             elif result.hero_image_cache_path:
                 self.hero_image_widget.show_pixmap(
                     QPixmap(result.hero_image_cache_path)

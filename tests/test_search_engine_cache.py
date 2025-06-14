@@ -44,12 +44,12 @@ def test_download_first_time(mock_get, cache_test_engine):
     
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
     
-    mock_get.assert_called_once_with(image_url, headers={"User-Agent": "WebParts/0.1"})
+    mock_get.assert_called_once_with(url=image_url, headers={"User-Agent": "WebParts v0.1"})
     assert result is not None
     data, cache_path = result
     assert data == b'fake-image-data'
     
-    expected_cache_file = cache_test_engine._get_cache_path(image_url, "png")
+    expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
     assert expected_cache_file.exists()
     assert expected_cache_file.read_bytes() == b'fake-image-data'
 
@@ -61,7 +61,9 @@ def test_download_from_cache(mock_get, cache_test_engine):
     and does not trigger a network call.
     """
     image_url = "http://example.com/image.png"
-    expected_cache_file = cache_test_engine._get_cache_path(image_url, "png")
+    expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
+    # Ensure parent directory exists
+    expected_cache_file.parent.mkdir(parents=True, exist_ok=True)
     expected_cache_file.write_bytes(b'cached-data')
     
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
@@ -83,5 +85,5 @@ def test_download_network_failure(mock_get, cache_test_engine):
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
     
     assert result is None
-    expected_cache_file = cache_test_engine._get_cache_path(image_url, "png")
+    expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
     assert not expected_cache_file.exists()

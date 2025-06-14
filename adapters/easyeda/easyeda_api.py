@@ -1,4 +1,3 @@
-# Global imports
 import json
 import logging
 from pathlib import Path
@@ -8,10 +7,11 @@ from uuid import UUID
 import requests
 
 from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
-from adapters.search_engine import SearchEngine
+from adapters.search_engine import SearchEngine, Vendor
 from models.common_info import FootprintInfo, ImageInfo
 from models.search_result import SearchResult
 from svg_utils import render_svg_to_png_bytes
+import constants as const
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class EasyEDAApi(SearchEngine):
             "Accept-Encoding": "gzip, deflate",
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": "WebParts v0.1",
+            "User-Agent": const.USER_AGENT,
         }
 
     def get_and_cache_svg_data(self, lcsc_id: str) -> Optional[dict]:
@@ -96,7 +96,6 @@ class EasyEDAApi(SearchEngine):
         if png_data:
             self._save_to_cache(png_cache_path, png_data)
             return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
-
         return None, None
 
     def _generate_symbol_png_from_data(
@@ -140,7 +139,7 @@ class EasyEDAApi(SearchEngine):
                 )
                 search_results.append(
                     SearchResult(
-                        vendor="LCSC",
+                        vendor=Vendor.LCSC,
                         part_name=raw_result.get("componentModelEn", ""),
                         lcsc_id=raw_result.get("componentCode", ""),
                         description=raw_result.get("describe", ""),

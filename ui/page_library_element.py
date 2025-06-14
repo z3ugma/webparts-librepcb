@@ -22,11 +22,14 @@ from PySide6.QtWidgets import (
 
 from models.search_result import SearchResult
 from models.library_part import LibraryPart
+from models.status import StatusValue
+from models.elements import LibrePCBElement
+from adapters.search_engine import Vendor
 from search import Search
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
 from .part_info_widget import PartInfoWidget
-import constants as const
+from constants import UIText, WebPartsFilename, WORKFLOW_MAPPING
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,9 @@ class ImageWorker(QObject):
         self.api_service = api_service
     def load_image(self, vendor: str, image_url: str, image_type: str):
         try:
-            if image_data := self.api_service.download_image_from_url(vendor, image_url):
+            result = self.api_service.download_image_from_url(vendor, image_url)
+            if result:
+                image_data, cache_path = result
                 self.image_loaded.emit(image_data, image_type)
             else:
                 self.image_failed.emit("Failed to download image", image_type)
@@ -56,7 +61,7 @@ class ImageWorker(QObject):
             self.image_failed.emit(str(e), image_type)
 
 class LibraryElementPage(QWidget):
-    request_image = Signal(str, str, str)
+    request_image = Signal(Vendor, str, str)  # vendor_enum, image_url, image_type
     back_to_library_requested = Signal()
 
     def __init__(self, parent=None):
@@ -126,7 +131,7 @@ class LibraryElementPage(QWidget):
         font = QFont(); font.setPointSize(12); self.hero_text_item.setFont(font)
         self.hero_text_item.setDefaultTextColor(Qt.gray)
         self.hero_scene.addItem(self.hero_text_item)
-        self._set_hero_text("No Image")
+        self._set_hero_text(UIText.NO_IMAGE.value)
 
     def _set_hero_text(self, text: str):
         self.hero_text_item.setPlainText(text); self.hero_text_item.setVisible(True)
@@ -168,10 +173,16 @@ class LibraryElementPage(QWidget):
             self.part_info_widget.set_component(component)
         
         if component.image_url:
-            self._set_hero_text("Loading...")
-            self.request_image.emit(component.vendor, component.image_url, "hero")
+            self._set_hero_text(UIText.LOADING.value)
+            # Convert string vendor to Vendor enum
+            try:
+                vendor_enum = Vendor(component.vendor)
+                self.request_image.emit(vendor_enum, component.image_url, "hero")
+            except ValueError:
+                logger.warning(f"Unknown vendor: {component.vendor}")
+                self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
         else:
-            self._set_hero_text("Image Not Available")
+            self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
             
         self.page_FootprintReview.set_footprint_image(
             QPixmap(component.footprint_png_path) if component.footprint_png_path else QPixmap()
@@ -185,18 +196,18 @@ class LibraryElementPage(QWidget):
         if self.part_info_widget:
             self.part_info_widget.set_component(part)
         
-        hero_path = const.WEBPARTS_DIR / part.uuid / const.FILENAME_HERO_IMAGE
+        hero_path = LibrePCBElement.PACKAGE.dir.parent / "webparts" / part.uuid / WebPartsFilename.HERO_IMAGE.value
         if hero_path.exists():
             pixmap = QPixmap(str(hero_path))
             if not pixmap.isNull():
                 self._set_hero_pixmap(pixmap)
             else:
-                self._set_hero_text("Image Not Available")
+                self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
         else:
-            self._set_hero_text("Image Not Available")
+            self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
         
-        footprint_path = const.PKG_DIR / part.footprint.uuid / "footprint.png"
-        symbol_path = const.WEBPARTS_DIR / part.uuid / "symbol.png"
+        footprint_path = LibrePCBElement.PACKAGE.dir / part.footprint.uuid / WebPartsFilename.FOOTPRINT_PNG.value
+        symbol_path = LibrePCBElement.PACKAGE.dir.parent / "webparts" / part.uuid / WebPartsFilename.SYMBOL_PNG.value
         
         self.page_FootprintReview.set_footprint_image(
             QPixmap(str(footprint_path)) if footprint_path.exists() else QPixmap()
@@ -209,10 +220,10 @@ class LibraryElementPage(QWidget):
 
     def _update_workflow_status(self, part: LibraryPart):
         """Update the workflow status indicators in the sidebar."""
-        for label_key, status_key in const.WORKFLOW_MAPPING.items():
+        for label_key, status_key in WORKFLOW_MAPPING.items():
             if self.workflow_status_labels[label_key]:
-                status_value = getattr(part.status, status_key, const.STATUS_UNAVAILABLE)
-                self.workflow_status_labels[label_key].setText(const.STATUS_ICON_MAP.get(status_value, "❓"))
+                status_value: StatusValue = getattr(part.status, status_key, StatusValue.UNAVAILABLE)
+                self.workflow_status_labels[label_key].setText(status_value.icon)
 
     def on_image_loaded(self, image_data: bytes, image_type: str):
         pixmap = QPixmap()
@@ -220,7 +231,7 @@ class LibraryElementPage(QWidget):
         if image_type == "hero": self._set_hero_pixmap(pixmap)
 
     def on_image_failed(self, error_message: str, image_type: str):
-        if image_type == "hero": self._set_hero_text("Image Not Available")
+        if image_type == "hero": self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
 
     def go_to_step(self, index):
         if 0 <= index < len(self.review_pages):

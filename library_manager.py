@@ -8,8 +8,10 @@ from PySide6.QtCore import QObject, Signal
 
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
+from models.status import StatusValue
+from models.elements import LibrePCBElement
 from converters.footprint_converter import generate_footprint
-import constants as const
+from constants import WebPartsFilename, WEBPARTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +21,9 @@ class LibraryManager(QObject):
 
     addPartFinished = Signal(object)  # Will emit LibraryPart or None
 
-    def __init__(self, library_path: Path = const.LIBRARY_DIR, parent=None):
+    def __init__(self, parent=None):
         """Initializes the LibraryManager."""
         super().__init__(parent)
-        self.library_path = library_path
-        self.webparts_dir = const.WEBPARTS_DIR
-        self.pkg_dir = const.PKG_DIR
 
     def setup_conversion_logging(self, part_uuid: str) -> Optional[logging.FileHandler]:
         """
@@ -32,9 +31,9 @@ class LibraryManager(QObject):
         """
         if not part_uuid:
             return None
-        log_dir = self.webparts_dir / part_uuid
+        log_dir = WEBPARTS_DIR / part_uuid
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file_path = log_dir / const.FILENAME_CONVERSION_LOG
+        log_file_path = log_dir / WebPartsFilename.CONVERSION_LOG.value
         file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
@@ -53,7 +52,7 @@ class LibraryManager(QObject):
         """Checks if a part manifest already exists in the library."""
         if not part_uuid:
             return False
-        manifest_path = self.webparts_dir / part_uuid / const.FILENAME_PART_MANIFEST
+        manifest_path = WEBPARTS_DIR / part_uuid / WebPartsFilename.PART_MANIFEST.value
         return manifest_path.exists()
 
     def add_part_from_search_result(self, search_result: SearchResult):
@@ -65,17 +64,16 @@ class LibraryManager(QObject):
             library_part = self._map_search_result_to_library_part(search_result)
             logger.info(f"  Mapped to Library Part UUID: {library_part.uuid}")
 
-            part_webparts_dir = self.webparts_dir / library_part.uuid
-            part_pkg_dir = self.pkg_dir / library_part.footprint.uuid
+            part_pkg_dir = LibrePCBElement.PACKAGE.dir / library_part.footprint.uuid
 
             logger.info("Creating library directories...")
-            part_webparts_dir.mkdir(parents=True, exist_ok=True)
+            (WEBPARTS_DIR / library_part.uuid).mkdir(parents=True, exist_ok=True)
             part_pkg_dir.mkdir(parents=True, exist_ok=True)
             logger.info("  OK.")
 
             logger.info("Copying assets...")
             self._copy_assets_and_get_new_paths(
-                search_result, part_pkg_dir, part_webparts_dir
+                search_result, part_pkg_dir, (WEBPARTS_DIR / library_part.uuid)
             )
             logger.info("  OK.")
 
@@ -102,50 +100,64 @@ class LibraryManager(QObject):
     def get_all_parts(self) -> list[LibraryPart]:
         """Scans the library and returns a list of all parts."""
         parts = []
-        if not self.webparts_dir.exists():
+        if not WEBPARTS_DIR.exists():
             return parts
 
-        for part_dir in self.webparts_dir.iterdir():
+        for part_dir in WEBPARTS_DIR.iterdir():
             if part_dir.is_dir():
-                manifest_path = part_dir / const.FILENAME_PART_MANIFEST
+                manifest_path = part_dir / WebPartsFilename.PART_MANIFEST.value
                 if manifest_path.exists():
                     try:
                         with open(manifest_path, "r") as f:
                             part_data = json.load(f)
                             part = LibraryPart.model_validate(part_data)
+                            
+                            # Status is determined ONLY from individual element manifests
+                            # to maintain single source of truth
                             part.status.footprint = self._get_element_status(
-                                const.WORKFLOW_MAPPING['footprint'], part.footprint.uuid, "footprint"
+                                LibrePCBElement.PACKAGE, part.footprint.uuid
                             )
                             part.status.symbol = self._get_element_status(
-                                const.WORKFLOW_MAPPING['symbol'], part.symbol.uuid, "symbol"
+                                LibrePCBElement.SYMBOL, part.symbol.uuid
                             )
                             part.status.component = self._get_element_status(
-                                const.WORKFLOW_MAPPING['assembly'], part.component.uuid, "component"
+                                LibrePCBElement.COMPONENT, part.component.uuid
                             )
                             part.status.device = self._get_element_status(
-                                const.WORKFLOW_MAPPING['finalize'], part.uuid, "device"
+                                LibrePCBElement.DEVICE, part.uuid
                             )
+                            
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
-                        logger.error(f"Error loading part manifest {manifest_path}: {e}")
+                        logger.error(f"❌ Failed to load part from {manifest_path}: {e}")
+        
         return parts
 
     def _get_element_status(
-        self, element_dir_name: str, element_uuid: str, element_type: str
-    ) -> str:
+        self, element: LibrePCBElement, element_uuid: str
+    ) -> StatusValue:
         """Reads the status from a given element's .wp manifest."""
         if not element_uuid:
-            return const.STATUS_UNAVAILABLE
-        element_dir = self.library_path / element_dir_name / element_uuid
-        manifest_path = element_dir / f"{element_uuid}.{element_type}.wp"
-        if not manifest_path.exists():
-            return const.STATUS_NEEDS_REVIEW
+            return StatusValue.UNAVAILABLE
+        
+        # Use the new helper properties to get paths
+        lp_path = element.get_lp_path(element_uuid)
+        wp_path = element.get_wp_path(element_uuid)
+        
+        if not lp_path.exists():
+            return StatusValue.UNAVAILABLE
+            
+        if not wp_path.exists():
+            return StatusValue.NEEDS_REVIEW
+            
         try:
-            with open(manifest_path, "r") as f:
+            with open(wp_path, "r") as f:
                 data = json.load(f)
-                return data.get("status", "unknown")
-        except (json.JSONDecodeError, IOError):
-            return const.STATUS_ERROR
+                status_value = data.get("status", "unknown")
+                return StatusValue(status_value)
+        except (json.JSONDecodeError, IOError, ValueError) as e:
+            logger.error(f"Error reading status manifest {wp_path}: {e}")
+            return StatusValue.ERROR
 
     def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
@@ -161,15 +173,15 @@ class LibraryManager(QObject):
         new_paths = {}
         if search_result.footprint_png_cache_path:
             new_paths["footprint_png_cache_path"] = self._copy_asset(
-                search_result.footprint_png_cache_path, pkg_dir, "footprint.png"
+                search_result.footprint_png_cache_path, pkg_dir, WebPartsFilename.FOOTPRINT_PNG.value
             )
         if search_result.footprint_svg_cache_path:
              self._copy_asset(
-                search_result.footprint_svg_cache_path, pkg_dir, "footprint.svg"
+                search_result.footprint_svg_cache_path, pkg_dir, WebPartsFilename.FOOTPRINT_SVG.value
             )
         if search_result.hero_image_cache_path:
             new_paths["hero_image_cache_path"] = self._copy_asset(
-                search_result.hero_image_cache_path, webparts_dir, const.FILENAME_HERO_IMAGE
+                search_result.hero_image_cache_path, webparts_dir, WebPartsFilename.HERO_IMAGE.value
             )
         return new_paths
 
@@ -177,7 +189,7 @@ class LibraryManager(QObject):
         """Saves the packageDetail portion of the raw CAD data."""
         if search_result.raw_cad_data:
             if package_detail := search_result.raw_cad_data.get("packageDetail"):
-                source_json_path = pkg_dir / const.FILENAME_SOURCE_JSON
+                source_json_path = pkg_dir / WebPartsFilename.SOURCE_JSON.value
                 with open(source_json_path, "w") as f:
                     json.dump(package_detail, f, indent=2)
 
@@ -192,14 +204,16 @@ class LibraryManager(QObject):
 
     def _create_manifests(self, library_part: LibraryPart, pkg_dir: Path):
         """Creates the central part.wp and the footprint element manifest."""
-        manifest_dir = self.webparts_dir / library_part.uuid
-        manifest_path = manifest_dir / const.FILENAME_PART_MANIFEST
+        manifest_dir = WEBPARTS_DIR / library_part.uuid
+        manifest_path = manifest_dir / WebPartsFilename.PART_MANIFEST.value
         with open(manifest_path, "w") as f:
             f.write(library_part.model_dump_json(indent=2))
-        footprint_manifest_path = pkg_dir / f"{library_part.footprint.uuid}.{const.FILENAME_FOOTPRINT_WP}"
+        
+        # Use the get_wp_path helper for consistency
+        footprint_manifest_path = LibrePCBElement.PACKAGE.get_wp_path(library_part.footprint.uuid)
         footprint_manifest = {
             "version": 1,
-            "status": const.STATUS_NEEDS_REVIEW,
+            "status": StatusValue.NEEDS_REVIEW.value,
             "validation": {"errors": [], "warnings": []},
         }
         with open(footprint_manifest_path, "w") as f:

@@ -5,6 +5,7 @@ from pytestqt.qtbot import QtBot
 import pytest
 
 from models.search_result import SearchResult
+from adapters.search_engine import Vendor
 from ui.page_search import SearchPage
 from ui.page_library import LibraryPage
 from ui.page_library_element import LibraryElementPage
@@ -71,5 +72,5 @@ class TestSearchPageBehavior:
         assert search_page.part_info_widget.mfn_value.text() == "Mfr"
         assert search_page.label_3dModelStatus.text() == "3D Model: Found"
         assert 'href="http://example.com/datasheet.pdf"' in search_page.datasheetLink.text()
-        assert blocker.args == ["LCSC", "http://example.com/image.png", "hero"]
+        assert blocker.args == [Vendor.LCSC, "http://example.com/image.png", "hero"]
 

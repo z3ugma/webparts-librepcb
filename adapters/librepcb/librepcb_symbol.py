@@ -12,7 +12,7 @@ from models.symbol import PinDirection, Symbol
 
 # Local imports
 from .s_expression import SExpSymbol, serialize_to_sexpr
-
+import constants as const
 
 class LibrePCBSymbolSerializer:
     def __init__(self, invert_y: bool = False):
@@ -205,7 +205,7 @@ class LibrePCBSymbolSerializer:
                 ("description", [symbol.description or ""]),
                 ("keywords", [", ".join(symbol.keywords) if symbol.keywords else ""]),
                 ("author", [symbol.author or "EasyEDA Converter"]),
-                ("version", [symbol.version_str or "0.1"]),
+                ("version", [symbol.version_str or const.DEFAULT_VERSION]),
                 ("created", [symbol.created_at or datetime.now()]),
                 ("deprecated", [False]),
                 (
