@@ -13,7 +13,19 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_Footprint" stretch="0,2,0,1">
+  <layout class="QVBoxLayout" name="verticalLayout_Footprint">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="QLabel" name="label_FootprintHeader">
      <property name="text">
@@ -22,146 +34,139 @@
     </widget>
    </item>
    <item>
-    <widget class="QSplitter" name="footprint_splitter">
+    <widget class="QSplitter" name="vertical_splitter">
      <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+      <enum>Qt::Vertical</enum>
      </property>
-     <widget class="QWidget" name="footprint_left_pane" native="true">
-      <layout class="QVBoxLayout" name="verticalLayout_3">
-       <item>
-        <widget class="QLabel" name="label">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Footprint Preview (from EasyEDA)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="footprint_image_container">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>250</width>
-           <height>250</height>
-          </size>
-         </property>
-         <property name="styleSheet">
-          <string>QLabel { border: 1px solid gray; background-color: #f0f0f0; }</string>
-         </property>
-         <property name="text">
-          <string>Footprint Image</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="footprint_right_pane" native="true">
-      <layout class="QVBoxLayout" name="verticalLayout_4">
-       <item>
-        <widget class="QLabel" name="label_2">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Generated (LibrePCB)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGraphicsView" name="librepcbFootprintView"/>
-       </item>
-      </layout>
-     </widget>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="label_FootprintMessages">
-     <property name="font">
-      <font>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
+     <property name="handleWidth">
+      <number>5</number>
      </property>
-     <property name="text">
-      <string>Messages &amp; Checklist:</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_FootprintDetails" stretch="3,1">
-     <item>
-      <widget class="QTreeWidget" name="footprintMessageList">
-       <property name="rootIsDecorated">
-        <bool>false</bool>
-       </property>
-       <property name="headerHidden">
-        <bool>true</bool>
-       </property>
-       <column>
-        <property name="text">
-         <string>Message</string>
-        </property>
-       </column>
-      </widget>
-     </item>
-     <item>
-      <widget class="QFrame" name="footprintActionFrame">
-       <layout class="QVBoxLayout" name="verticalLayout_FootprintActions">
+     <widget class="QSplitter" name="footprint_splitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="handleWidth">
+       <number>5</number>
+      </property>
+      <widget class="QWidget" name="footprint_left_pane" native="true">
+       <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <widget class="QPushButton" name="button_ApproveFootprint">
+         <widget class="QLabel" name="label">
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
           <property name="text">
-           <string>Approve &amp; Continue</string>
+           <string>Footprint Preview (from EasyEDA)</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="Line" name="line_3">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="button_EditFootprint">
-          <property name="text">
-           <string>Edit in LibrePCB...</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="button_RefreshFootprint">
-          <property name="text">
-           <string>Refresh Checks</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="verticalSpacer_3">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-         </spacer>
+         <widget class="QGraphicsView" name="footprint_image_container"/>
         </item>
        </layout>
       </widget>
-     </item>
-    </layout>
+      <widget class="QWidget" name="footprint_right_pane" native="true">
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Generated (LibrePCB)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGraphicsView" name="librepcbFootprintView"/>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="messages_container" native="true">
+      <layout class="QVBoxLayout" name="verticalLayout_Messages">
+       <item>
+        <widget class="QLabel" name="label_FootprintMessages">
+         <property name="font">
+          <font>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Messages &amp; Checklist:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_FootprintDetails" stretch="3,1">
+         <item>
+          <widget class="QTreeWidget" name="footprintMessageList">
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="headerHidden">
+            <bool>true</bool>
+           </property>
+           <column>
+            <property name="text">
+             <string>Message</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="footprintActionFrame">
+           <layout class="QVBoxLayout" name="verticalLayout_FootprintActions">
+            <item>
+             <widget class="QPushButton" name="button_ApproveFootprint">
+              <property name="text">
+               <string>Approve &amp; Continue</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="Line" name="line_3">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="button_EditFootprint">
+              <property name="text">
+               <string>Edit in LibrePCB...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="button_RefreshFootprint">
+              <property name="text">
+               <string>Refresh Checks</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="verticalSpacer_3">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </item>
   </layout>
  </widget>

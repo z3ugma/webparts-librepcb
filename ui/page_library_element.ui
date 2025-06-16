@@ -13,352 +13,50 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,3">
+  <layout class="QHBoxLayout" name="horizontalLayout_2">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
-    <widget class="QFrame" name="contextFrame">
-     <property name="minimumSize">
-      <size>
-       <width>250</width>
-       <height>0</height>
-      </size>
+    <widget class="QSplitter" name="main_splitter">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
      </property>
-     <property name="frameShape">
-      <enum>QFrame::StyledPanel</enum>
+     <property name="handleWidth">
+      <number>5</number>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout_Context">
-      <item>
-       <widget class="PartInfoWidget" name="part_info_widget" native="true"/>
-      </item>
-      <item>
-       <widget class="Line" name="line_workflow">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_WorkflowHeader">
-        <property name="font">
-         <font>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Workflow Status</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="step1Layout">
-        <item>
-         <widget class="QLabel" name="label_step1_status">
-          <property name="text">
-           <string>⏳</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="ClickableLabel" name="step1_Status">
-          <property name="toolTip">
-           <string>Click to navigate to this step</string>
-          </property>
-          <property name="text">
-           <string>1. Footprint Review</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer_1">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="step2Layout">
-        <item>
-         <widget class="QLabel" name="label_step2_status">
-          <property name="text">
-           <string>⏳</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="ClickableLabel" name="step2_Status">
-          <property name="toolTip">
-           <string>Click to navigate to this step</string>
-          </property>
-          <property name="text">
-           <string>2. Symbol Review</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer_2">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="step3Layout">
-        <item>
-         <widget class="QLabel" name="label_step3_status">
-          <property name="text">
-           <string>⏳</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="ClickableLabel" name="step3_Status">
-          <property name="toolTip">
-           <string>Click to navigate to this step</string>
-          </property>
-          <property name="text">
-           <string>3. Assembly</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer_3">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="step4Layout">
-        <item>
-         <widget class="QLabel" name="label_step4_status">
-          <property name="text">
-           <string>⏳</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="ClickableLabel" name="step4_Status">
-          <property name="toolTip">
-           <string>Click to navigate to this step</string>
-          </property>
-          <property name="text">
-           <string>4. Finalize</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer_4">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QGraphicsView" name="image_hero_view">
-        <property name="toolTip">
-         <string>Pan by dragging, zoom with scroll wheel.</string>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>250</height>
-         </size>
-        </property>
-        <property name="dragMode">
-         <enum>QGraphicsView::ScrollHandDrag</enum>
-        </property>
-        <property name="renderHints">
-         <set>QPainter::Antialiasing|QPainter::SmoothPixmapTransform</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="navigation_buttons_layout">
-        <item>
-         <widget class="QPushButton" name="button_PreviousStep">
-          <property name="text">
-           <string>Previous</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="button_NextStep">
-          <property name="text">
-           <string>Next</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="Line" name="line">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_3dModelStatus">
-        <property name="text">
-         <string>3D Model: (Not found)</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="datasheetLink">
-        <property name="text">
-         <string>&lt;a href="#"&gt;Open Datasheet&lt;/a&gt;</string>
-        </property>
-        <property name="openExternalLinks">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </spacer>
-      </item>
-      <item>
-       <widget class="QPushButton" name="back_to_library_button">
-        <property name="text">
-         <string>Back to Library</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QStackedWidget" name="reviewStackedWidget">
-     <widget class="FootprintReviewPage" name="page_FootprintReview"/>
-     <widget class="SymbolReviewPage" name="page_SymbolReview"/>
-     <widget class="QWidget" name="page_ComponentAssembly">
-      <layout class="QVBoxLayout" name="verticalLayout">
+     <widget class="QFrame" name="contextFrame">
+      <property name="minimumSize">
+       <size>
+        <width>250</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_Context">
        <item>
-        <widget class="QLabel" name="label_component_header">
-         <property name="text">
-          <string>&lt;h1&gt;Component &amp;amp; Device Assembly&lt;/h1&gt;</string>
-         </property>
-        </widget>
+        <widget class="PartInfoWidget" name="part_info_widget" native="true"/>
        </item>
        <item>
-        <widget class="QLabel" name="label_component_subheader">
-         <property name="text">
-          <string>Map symbol pins to footprint pads. Resolve any conflicts.</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QTableView" name="pinPadMappingTable">
-         <property name="alternatingRowColors">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="label_AssemblyMessages">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Messages:</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QTreeWidget" name="assemblyMessageList">
-         <property name="rootIsDecorated">
-          <bool>false</bool>
-         </property>
-         <property name="headerHidden">
-          <bool>true</bool>
-         </property>
-         <column>
-          <property name="text">
-           <string>New Column</string>
-          </property>
-         </column>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="button_ProceedToFinalize">
-         <property name="text">
-          <string>Proceed to Final Review</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="page_FinalSummary">
-      <layout class="QVBoxLayout" name="verticalLayout_2">
-       <item>
-        <widget class="QLabel" name="label_FinalHeader">
-         <property name="text">
-          <string>&lt;h1&gt;Final Summary &amp;amp; Commit&lt;/h1&gt;</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="label_FinalSubheader">
-         <property name="text">
-          <string>The following component will be saved to your local library. Please review any outstanding warnings.</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="label_FinalLibraryPath">
-         <property name="text">
-          <string>Target Library: &lt;i&gt;path/to/your/library.lplib&lt;/i&gt;</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="Line" name="line_5">
+        <widget class="Line" name="line_workflow">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QLabel" name="label_UnacknowledgedWarnings">
+        <widget class="QLabel" name="label_WorkflowHeader">
          <property name="font">
           <font>
            <weight>75</weight>
@@ -366,47 +64,367 @@
           </font>
          </property>
          <property name="text">
-          <string>Unacknowledged Warnings:</string>
+          <string>Workflow Status</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QListWidget" name="finalWarningList"/>
+        <layout class="QHBoxLayout" name="step1Layout">
+         <item>
+          <widget class="QLabel" name="label_step1_status">
+           <property name="text">
+            <string>⏳</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="ClickableLabel" name="step1_Status">
+           <property name="toolTip">
+            <string>Click to navigate to this step</string>
+           </property>
+           <property name="text">
+            <string>1. Footprint Review</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_1">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
        <item>
-        <widget class="QCheckBox" name="finalAcknowledgeCheckbox">
-         <property name="text">
-          <string>I have reviewed all warnings and wish to proceed.</string>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="step2Layout">
+         <item>
+          <widget class="QLabel" name="label_step2_status">
+           <property name="text">
+            <string>⏳</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="ClickableLabel" name="step2_Status">
+           <property name="toolTip">
+            <string>Click to navigate to this step</string>
+           </property>
+           <property name="text">
+            <string>2. Symbol Review</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
        <item>
-        <widget class="QPushButton" name="button_CommitToLibrary">
+        <layout class="QHBoxLayout" name="step3Layout">
+         <item>
+          <widget class="QLabel" name="label_step3_status">
+           <property name="text">
+            <string>⏳</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="ClickableLabel" name="step3_Status">
+           <property name="toolTip">
+            <string>Click to navigate to this step</string>
+           </property>
+           <property name="text">
+            <string>3. Assembly</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="step4Layout">
+         <item>
+          <widget class="QLabel" name="label_step4_status">
+           <property name="text">
+            <string>⏳</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="ClickableLabel" name="step4_Status">
+           <property name="toolTip">
+            <string>Click to navigate to this step</string>
+           </property>
+           <property name="text">
+            <string>4. Finalize</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_4">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGraphicsView" name="image_hero_view">
          <property name="toolTip">
-          <string>You must acknowledge all warnings before committing</string>
+          <string>Pan by dragging, zoom with scroll wheel.</string>
          </property>
-         <property name="text">
-          <string>Commit to Library</string>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>250</height>
+          </size>
          </property>
-         <property name="enabled">
-          <bool>false</bool>
+         <property name="dragMode">
+          <enum>QGraphicsView::ScrollHandDrag</enum>
+         </property>
+         <property name="renderHints">
+          <set>QPainter::Antialiasing|QPainter::SmoothPixmapTransform</set>
          </property>
         </widget>
        </item>
        <item>
-        <spacer name="verticalSpacer_2">
+        <layout class="QHBoxLayout" name="navigation_buttons_layout">
+         <item>
+          <widget class="QPushButton" name="button_PreviousStep">
+           <property name="text">
+            <string>Previous</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="button_NextStep">
+           <property name="text">
+            <string>Next</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="Line" name="line">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_3dModelStatus">
+         <property name="text">
+          <string>3D Model: (Not found)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="datasheetLink">
+         <property name="text">
+          <string>&lt;a href="#"&gt;Open Datasheet&lt;/a&gt;</string>
+         </property>
+         <property name="openExternalLinks">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QPushButton" name="back_to_library_button">
+         <property name="text">
+          <string>Back to Library</string>
+         </property>
+        </widget>
+       </item>
       </layout>
+     </widget>
+     <widget class="QStackedWidget" name="reviewStackedWidget">
+      <widget class="FootprintReviewPage" name="page_FootprintReview"/>
+      <widget class="SymbolReviewPage" name="page_SymbolReview"/>
+      <widget class="QWidget" name="page_ComponentAssembly">
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QLabel" name="label_component_header">
+          <property name="text">
+           <string>&lt;h1&gt;Component &amp;amp; Device Assembly&lt;/h1&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_component_subheader">
+          <property name="text">
+           <string>Map symbol pins to footprint pads. Resolve any conflicts.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableView" name="pinPadMappingTable">
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_AssemblyMessages">
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Messages:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTreeWidget" name="assemblyMessageList">
+          <property name="rootIsDecorated">
+           <bool>false</bool>
+          </property>
+          <property name="headerHidden">
+           <bool>true</bool>
+          </property>
+          <column>
+           <property name="text">
+            <string>New Column</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_ProceedToFinalize">
+          <property name="text">
+           <string>Proceed to Final Review</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="page_FinalSummary">
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QLabel" name="label_FinalHeader">
+          <property name="text">
+           <string>&lt;h1&gt;Final Summary &amp;amp; Commit&lt;/h1&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_FinalSubheader">
+          <property name="text">
+           <string>The following component will be saved to your local library. Please review any outstanding warnings.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_FinalLibraryPath">
+          <property name="text">
+           <string>Target Library: &lt;i&gt;path/to/your/library.lplib&lt;/i&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="Line" name="line_5">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_UnacknowledgedWarnings">
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Unacknowledged Warnings:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QListWidget" name="finalWarningList"/>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="finalAcknowledgeCheckbox">
+          <property name="text">
+           <string>I have reviewed all warnings and wish to proceed.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_CommitToLibrary">
+          <property name="toolTip">
+           <string>You must acknowledge all warnings before committing</string>
+          </property>
+          <property name="text">
+           <string>Commit to Library</string>
+          </property>
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_2">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </widget>
    </item>
@@ -422,7 +440,7 @@
   <customwidget>
    <class>ClickableLabel</class>
    <extends>QLabel</extends>
-   <header>ui.page_library_element</header>
+   <header>ui.custom_widgets</header>
   </customwidget>
   <customwidget>
    <class>FootprintReviewPage</class>

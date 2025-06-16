@@ -2,94 +2,65 @@ import logging
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QPixmap
+from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QGraphicsPixmapItem,
-    QGraphicsScene,
-    QGraphicsTextItem,
-    QGraphicsView,
-    QVBoxLayout,
-    QWidget,
+    QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, 
+    QGraphicsPixmapItem
 )
+
+from .custom_widgets import ZoomPanGraphicsView
 
 logger = logging.getLogger(__name__)
 
 
 class SymbolReviewPage(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
-
-        self._original_symbol_pixmap = None
+        
+        self._initial_fit_done = False
 
         loader = QUiLoader()
-        ui_file_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "symbol_review_page.ui"
-        )
-        loaded_ui = loader.load(ui_file_path, self)
+        ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "symbol_review_page.ui")
+        self.ui = loader.load(ui_file_path, self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(loaded_ui)
+        layout.addWidget(self.ui)
 
-        self.easyeda_view = self.findChild(QGraphicsView, "easyedaSymbolView")
-        self.librepcb_view = self.findChild(QGraphicsView, "librepcbSymbolView")
+        placeholder_view = self.ui.findChild(QGraphicsView, "easyedaSymbolView")
+        
+        if placeholder_view:
+            self.symbol_scene = QGraphicsScene(self)
+            self.symbol_pixmap_item = QGraphicsPixmapItem()
+            self.symbol_scene.addItem(self.symbol_pixmap_item)
 
-        if not self.easyeda_view or not self.librepcb_view:
-            logger.error("Could not find symbol views in the UI.")
-            return
-
-        self.easyeda_scene = QGraphicsScene(self)
-        self.easyeda_view.setScene(self.easyeda_scene)
-        self.easyeda_view.setAlignment(Qt.AlignCenter)
-
-        self.easyeda_item = QGraphicsPixmapItem()
-        self.easyeda_scene.addItem(self.easyeda_item)
-
-        self.easyeda_text_item = QGraphicsTextItem()
-        self.easyeda_scene.addItem(self.easyeda_text_item)
-
-        self.show_message("Loading Symbol...")
-
-    def show_message(self, message: str):
-        """Display a text message in the center of the easyeda_view."""
-        if not self.easyeda_text_item:
-            return
-        self.easyeda_item.setVisible(False)
-        self.easyeda_text_item.setPlainText(message)
-        font = QFont()
-        font.setPointSize(14)
-        self.easyeda_text_item.setFont(font)
-        self.easyeda_text_item.setVisible(True)
-        self._rescale_contents()
-
-    def set_symbol_image(self, pixmap: QPixmap | None):
-        """Sets the pixmap to be displayed, or shows a message if pixmap is None."""
-        if not self.easyeda_item:
-            return
-
-        if pixmap and not pixmap.isNull():
-            self._original_symbol_pixmap = pixmap
-            self.easyeda_text_item.setVisible(False)
-            self.easyeda_item.setVisible(True)
-            self.easyeda_item.setPixmap(pixmap)
+            self.symbol_image_view = ZoomPanGraphicsView(self.symbol_scene, self)
+            
+            parent_layout = placeholder_view.parent().layout()
+            if parent_layout:
+                parent_layout.replaceWidget(placeholder_view, self.symbol_image_view)
+                placeholder_view.deleteLater()
+            else:
+                logger.error("Could not find parent layout to replace placeholder view.")
         else:
-            self._original_symbol_pixmap = None
-            self.show_message("Symbol Not Available")
-        self._rescale_contents()
+            logger.error("Could not find 'easyedaSymbolView' in the UI.")
 
-    def resizeEvent(self, event):
+    def set_symbol_image(self, pixmap: QPixmap):
+        if hasattr(self, 'symbol_pixmap_item'):
+            self._initial_fit_done = False # Reset flag for new images
+            if pixmap and not pixmap.isNull():
+                self.symbol_pixmap_item.setPixmap(pixmap)
+            else:
+                self.symbol_pixmap_item.setPixmap(QPixmap())
+
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        Handle resize events to perform the initial fit-in-view.
+        """
         super().resizeEvent(event)
-        self._rescale_contents()
-
-    def showEvent(self, event):
-        """Handle show events to ensure image is properly scaled when first displayed."""
-        super().showEvent(event)
-        self._rescale_contents()
-
-    def _rescale_contents(self):
-        if self._original_symbol_pixmap and not self._original_symbol_pixmap.isNull():
-            self.easyeda_view.fitInView(self.easyeda_item, Qt.KeepAspectRatio)
-        elif self.easyeda_text_item and self.easyeda_text_item.isVisible():
-            # For text, we just need to ensure the scene is still centered
-            self.easyeda_view.centerOn(self.easyeda_text_item)
+        if not self._initial_fit_done:
+            if self.symbol_image_view.viewport().size().width() > 0:
+                logger.info(f"Performing initial fit for symbol image with viewport size: {self.symbol_image_view.viewport().size()}")
+                self.symbol_image_view.fitInView(self.symbol_pixmap_item, Qt.KeepAspectRatio)
+                self._initial_fit_done = True

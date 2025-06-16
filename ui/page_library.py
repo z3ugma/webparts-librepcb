@@ -261,10 +261,10 @@ class LibraryPage(QWidget):
         if self.last_hydration_request_uuid == hydrated_uuid:
             logger.info(f"✅ Hydration matches last request. Updating sidebar for {part.lcsc_id}")
             self.current_selected_part = part
-            pixmap = getattr(part, '_hero_pixmap', None)
             if self.hero_image_widget:
-                if isinstance(pixmap, QPixmap) and not pixmap.isNull():
-                    self.hero_image_widget.show_pixmap(pixmap)
+                hero_path = LibrePCBElement.PACKAGE.dir.parent / "webparts" / part.uuid / WebPartsFilename.HERO_IMAGE.value
+                if hero_path.exists():
+                    self.hero_image_widget.show_pixmap(QPixmap(str(hero_path)))
                 else:
                     self.hero_image_widget.show_no_image()
             if self.part_info_widget:

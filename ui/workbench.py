@@ -7,7 +7,7 @@ from typing import List
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtWidgets import QApplication, QMessageBox, QStackedWidget, QWidget
+from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
 
 from adapters.search_engine import Vendor
 from library_manager import LibraryManager
@@ -15,12 +15,13 @@ from models.library_part import LibraryPart
 from models.search_result import SearchResult
 from search import Search
 
+from .custom_widgets import ClickableLabel
 from .footprint_review_page import FootprintReviewPage
+from .hero_image_widget import HeroImageWidget
 from .page_library import LibraryPage
 from .page_library_element import LibraryElementPage
 from .page_search import SearchPage
 from .part_info_widget import PartInfoWidget
-from .hero_image_widget import HeroImageWidget
 from .symbol_review_page import SymbolReviewPage
 
 # Ensure SIGINT (Ctrl+C) quits the app properly
@@ -58,9 +59,7 @@ class ImageWorker(QObject):
 
     def load_image(self, vendor: Vendor, image_url: str, image_type: str):
         try:
-            result = self.api_service.download_image_from_url(
-                vendor, image_url
-            )
+            result = self.api_service.download_image_from_url(vendor, image_url)
             if result:
                 image_data, cache_path = result
                 self.image_loaded.emit(image_data, image_type, cache_path)
@@ -284,7 +283,7 @@ class WorkbenchController(QObject):
     def on_search_item_selected(self, result: SearchResult):
         if result and isinstance(result.vendor, str):
             result.vendor = Vendor(result.vendor)
-            
+
         self.current_search_result = result
         self.page_Search.clear_images()
         self.page_Search.add_to_library_button.setEnabled(False)
@@ -300,6 +299,7 @@ class WorkbenchController(QObject):
                 thread.quit()
                 thread.wait()
 
+
 def main():
     app = QApplication(sys.argv)
     loader = QUiLoader()
@@ -310,6 +310,7 @@ def main():
     loader.registerCustomWidget(HeroImageWidget)
     loader.registerCustomWidget(FootprintReviewPage)
     loader.registerCustomWidget(SymbolReviewPage)
+    loader.registerCustomWidget(ClickableLabel)
     ui_file_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "workbench.ui"
     )
