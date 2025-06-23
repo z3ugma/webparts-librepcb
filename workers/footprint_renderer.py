@@ -8,14 +8,13 @@ from svg_utils import render_svg_file_to_png_file
 logger = logging.getLogger(__name__)
 
 
-def render_footprint_sync(library_path: Path, footprint_uuid: str) -> str:
+def render_footprint_sync(package_dir: Path) -> str:
     """
     Synchronously renders a footprint to a high-resolution PNG using librepcb-cli and pyvips.
     Returns the absolute path to the rendered PNG on success, or raises an Exception on failure.
     """
-    logger.info(f"--- Starting High-Res Footprint Rendering for {footprint_uuid} ---")
+    logger.info(f"--- Starting High-Res Footprint Rendering for {package_dir.name} ---")
     try:
-        package_dir = Path(library_path, "pkg", footprint_uuid)
         package_dir.mkdir(parents=True, exist_ok=True)
 
         svg_output_path = Path(package_dir, WebPartsFilename.RENDERED_SVG.value)

@@ -59,7 +59,8 @@ class FootprintReviewPage(QWidget):
             LibraryElementImageWidget, "librepcbFootprintView"
         )
         if self.librepcb_preview:
-            self.librepcb_preview.show_text("Not Implemented")
+            # This will be populated by set_library_part
+            self.librepcb_preview.show_text("Loading...")
         else:
             logger.error("Could not find 'librepcbFootprintView' widget.")
 

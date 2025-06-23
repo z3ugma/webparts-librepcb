@@ -15,6 +15,7 @@ class SymbolInfo(BaseModel):
     uuid: Optional[str] = None
     png_path: Optional[str] = None
     svg_path: Optional[str] = None
+    rendered_png_path: Optional[str] = None
 
 
 class FootprintInfo(BaseModel):
@@ -22,6 +23,7 @@ class FootprintInfo(BaseModel):
     package_type: Optional[str] = None
     png_path: Optional[str] = None
     svg_path: Optional[str] = None
+    rendered_png_path: Optional[str] = None
 
 
 class ComponentInfo(BaseModel):

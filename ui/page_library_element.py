@@ -237,6 +237,16 @@ class LibraryElementPage(QWidget):
             else QPixmap()
         )
         self.page_FootprintReview.set_footprint_image(footprint_pixmap)
+
+        rendered_footprint_pixmap = (
+            QPixmap(component.footprint.rendered_png_path)
+            if hasattr(component, "footprint") and component.footprint.rendered_png_path
+            else QPixmap()
+        )
+        self.page_FootprintReview.set_librepcb_footprint_image(
+            rendered_footprint_pixmap
+        )
+
         symbol_pixmap = (
             QPixmap(component.symbol.png_path)
             if hasattr(component, "symbol") and component.symbol.png_path

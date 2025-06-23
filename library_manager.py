@@ -10,8 +10,9 @@ from models.library_part import LibraryPart
 from models.search_result import SearchResult
 from models.status import StatusValue
 from models.elements import LibrePCBElement
-from constants import WebPartsFilename, WEBPARTS_DIR
+from constants import WebPartsFilename, WEBPARTS_DIR, LIBRARY_DIR
 from workers.footprint_converter import generate_footprint
+from workers.footprint_renderer import render_footprint_sync
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,10 @@ class LibraryManager(QObject):
             logger.info("--- Starting Footprint Generation ---")
             if generate_footprint(search_result.raw_cad_data, str(part_pkg_dir)):
                 logger.info("--- Footprint Generation Succeeded ---")
+                try:
+                    render_footprint_sync(part_pkg_dir)
+                except Exception as e:
+                    logger.error(f"--- Footprint Rendering Failed ---\n{e}")
             else:
                 logger.error("--- Footprint Generation Failed ---")
 
@@ -177,10 +182,13 @@ class LibraryManager(QObject):
             pkg_dir = LibrePCBElement.PACKAGE.dir / part.footprint.uuid
             footprint_png_path = pkg_dir / WebPartsFilename.FOOTPRINT_PNG.value
             footprint_svg_path = pkg_dir / WebPartsFilename.FOOTPRINT_SVG.value
+            rendered_png_path = pkg_dir / WebPartsFilename.RENDERED_PNG.value
             if footprint_png_path.exists():
                 part.footprint.png_path = str(footprint_png_path.resolve())
             if footprint_svg_path.exists():
                 part.footprint.svg_path = str(footprint_svg_path.resolve())
+            if rendered_png_path.exists():
+                part.footprint.rendered_png_path = str(rendered_png_path.resolve())
 
     def _get_element_status(
         self, element: LibrePCBElement, element_uuid: str
