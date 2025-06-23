@@ -31,19 +31,23 @@ import constants as const
 
 logger = logging.getLogger(__name__)
 
+
 # --- Custom Log Handler ---
 class QLogHandler(logging.Handler, QObject):
     """A logging handler that emits a Qt signal for each log record."""
+
     log_received = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__()
         QObject.__init__(self, parent)
-        self.setFormatter(logging.Formatter('%(message)s'))
+        # Use a simple formatter for the UI log
+        self.setFormatter(logging.Formatter("%(message)s"))
 
     def emit(self, record):
         msg = self.format(record)
         self.log_received.emit(msg)
+
 
 # --- Add to Library Dialog ---
 class AddToLibraryDialog(QDialog):
@@ -67,7 +71,9 @@ class AddToLibraryDialog(QDialog):
         layout.addWidget(self.log_view)
 
         button_box = QDialogButtonBox(self)
-        self.copy_button = button_box.addButton("Copy to Clipboard", QDialogButtonBox.ActionRole)
+        self.copy_button = button_box.addButton(
+            "Copy to Clipboard", QDialogButtonBox.ActionRole
+        )
         self.ok_button = button_box.addButton(QDialogButtonBox.Ok)
         self.ok_button.setEnabled(False)
         button_box.accepted.connect(self.accept)
@@ -127,6 +133,7 @@ class AddToLibraryDialog(QDialog):
             self._thread.wait(1000)
         super().done(result)
 
+
 class SearchPage(QWidget):
     search_requested = Signal(str)
     item_selected = Signal(object)
@@ -160,8 +167,12 @@ class SearchPage(QWidget):
     def _find_widgets(self):
         self.search_input = self.findChild(QLineEdit, "searchInput")
         self.search_button = self.findChild(QPushButton, "button_Search")
-        self.add_to_library_button = self.findChild(QPushButton, "add_to_library_button")
-        self.back_to_library_button = self.findChild(QPushButton, "back_to_library_button")
+        self.add_to_library_button = self.findChild(
+            QPushButton, "add_to_library_button"
+        )
+        self.back_to_library_button = self.findChild(
+            QPushButton, "back_to_library_button"
+        )
         self.results_tree = self.findChild(QTreeWidget, "searchResultsTree")
         self.symbol_image_label = self.findChild(QLabel, "image_symbol")
         self.footprint_image_label = self.findChild(QLabel, "image_footprint")
@@ -186,7 +197,10 @@ class SearchPage(QWidget):
             logger.warning("Add to library clicked but no item selected.")
             return
 
-        part_uuid = self._current_search_result.uuid or f"search-{self._current_search_result.lcsc_id}"
+        part_uuid = (
+            self._current_search_result.uuid
+            or f"search-{self._current_search_result.lcsc_id}"
+        )
         if self.library_manager.part_exists(part_uuid):
             reply = QMessageBox.question(
                 self,
@@ -211,6 +225,7 @@ class SearchPage(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         from PySide6.QtCore import QTimer
+
         QTimer.singleShot(0, self._rescale_images)
 
     def _rescale_images(self):
@@ -224,9 +239,11 @@ class SearchPage(QWidget):
             w = max(w, 250)
             h = max(h, 250)
             if w > 0 and h > 0:
-                self.symbol_image_label.setPixmap(self._original_symbol_pixmap.scaled(
-                    w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                ))
+                self.symbol_image_label.setPixmap(
+                    self._original_symbol_pixmap.scaled(
+                        w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                )
         if (
             self._original_footprint_pixmap
             and not self._original_footprint_pixmap.isNull()
@@ -237,9 +254,11 @@ class SearchPage(QWidget):
             w = max(w, 250)
             h = max(h, 250)
             if w > 0 and h > 0:
-                self.footprint_image_label.setPixmap(self._original_footprint_pixmap.scaled(
-                    w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                ))
+                self.footprint_image_label.setPixmap(
+                    self._original_footprint_pixmap.scaled(
+                        w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                )
 
     def clear_images(self):
         self._original_symbol_pixmap = None
@@ -249,7 +268,9 @@ class SearchPage(QWidget):
             self.symbol_image_label.setText("Select a component to see its symbol")
         if self.footprint_image_label:
             self.footprint_image_label.clear()
-            self.footprint_image_label.setText("Select a component to see its footprint")
+            self.footprint_image_label.setText(
+                "Select a component to see its footprint"
+            )
         if self.hero_image_widget:
             self.hero_image_widget.clear()
         if self.part_info_widget:
@@ -279,12 +300,14 @@ class SearchPage(QWidget):
             self.results_tree.addTopLevelItem(item)
         else:
             for result in results:
-                item = QTreeWidgetItem([
-                    result.manufacturer,
-                    result.part_name,
-                    result.lcsc_id,
-                    result.description,
-                ])
+                item = QTreeWidgetItem(
+                    [
+                        result.manufacturer,
+                        result.part_name,
+                        result.lcsc_id,
+                        result.description,
+                    ]
+                )
                 item.setData(0, Qt.UserRole, result)
                 self.results_tree.addTopLevelItem(item)
         self.results_tree.currentItemChanged.connect(self.on_tree_item_selected)
@@ -313,9 +336,9 @@ class SearchPage(QWidget):
                 h = self.symbol_image_label.height()
                 w = max(w, 250)
                 h = max(h, 250)
-                self.symbol_image_label.setPixmap(pixmap.scaled(
-                    w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                ))
+                self.symbol_image_label.setPixmap(
+                    pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
             else:
                 self._original_symbol_pixmap = None
                 self.symbol_image_label.setText("Symbol Not Available")
@@ -328,9 +351,9 @@ class SearchPage(QWidget):
                 h = self.footprint_image_label.height()
                 w = max(w, 250)
                 h = max(h, 250)
-                self.footprint_image_label.setPixmap(pixmap.scaled(
-                    w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                ))
+                self.footprint_image_label.setPixmap(
+                    pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
             else:
                 self._original_footprint_pixmap = None
                 self.footprint_image_label.setText("Footprint Not Available")
