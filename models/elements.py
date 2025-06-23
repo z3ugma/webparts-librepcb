@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 from constants import LIBRARY_DIR
 
+
 class LibrePCBElement(Enum):
     """Represents the core elements of a LibrePCB library."""
 
@@ -32,10 +33,12 @@ class LibrePCBElement(Enum):
         """Get the path to the WebParts manifest file (.wp)."""
         return self.dir / uuid / f"{uuid}.{self.webparts_name}.wp"
 
+
 class BaseElement(BaseModel):
     """
     A base model for all library elements, containing common metadata.
     """
+
     uuid: UUID = Field(default_factory=uuid4)
     name: str
     description: Optional[str] = None

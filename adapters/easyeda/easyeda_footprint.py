@@ -765,7 +765,6 @@ class EasyEDAParser:
         fp = Footprint(
             name=footprint_name,
             uuid=fp_uuid,
-            version_str=str(utime) if utime else "1",  # Placeholder for version
             author=author,
             created_at=created_at,
             generated_by=generated_by,

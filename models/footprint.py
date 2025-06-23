@@ -1,13 +1,15 @@
-from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from constants import DEFAULT_VERSION
+
 from .elements import BaseElement
 from .graphics import EulerRotation, GraphicElement, Point, Point3D
 from .layer import LayerRef
+
 
 class AssemblyType(str, Enum):
     NONE = None  # Nothing to mount (i.e. not a package, just a footprint)
@@ -64,7 +66,10 @@ class Pad(BaseModel):
 
     @model_validator(mode="after")
     def _validate_shape(cls, m):
-        if m.shape in {PadShape.RECTANGLE, PadShape.OVAL, PadShape.ROUNDRECT} and m.height is None:
+        if (
+            m.shape in {PadShape.RECTANGLE, PadShape.OVAL, PadShape.ROUNDRECT}
+            and m.height is None
+        ):
             raise ValueError("Height required for non-circular pads")
         if m.shape == PadShape.POLYGON and not m.vertices:
             raise ValueError("Vertices required for POLYGON")
@@ -87,6 +92,7 @@ class Pad(BaseModel):
                 raise ValueError("Drill properties only allowed on THT/Via")
         return m
 
+
 class Drill(BaseModel):
     position: Point
     shape: DrillShape = DrillShape.ROUND
@@ -103,11 +109,13 @@ class Drill(BaseModel):
             raise ValueError("slot_length not allowed for ROUND")
         return m
 
+
 class Model3D(BaseModel):
     uuid: Optional[UUID] = None
     offset: Point3D = Field(default_factory=lambda: Point3D(x=0, y=0, z=0))
     rotation: EulerRotation = Field(default_factory=lambda: EulerRotation())
     scale: Point3D = Field(default_factory=lambda: Point3D(x=1, y=1, z=1))
+
 
 class Footprint(BaseElement):
     pads: List[Pad] = Field(default_factory=list)
@@ -115,6 +123,11 @@ class Footprint(BaseElement):
     origin: Point = Field(default_factory=lambda: Point(x=0, y=0))
     height: float = 0
     width: float = 0
+    version_str: str = DEFAULT_VERSION
+    #     A version string consists of numbers separated by dots (e.g., 0.1 or 2024.06.21).
+    # Each number segment must be an unsigned integer between 0 and 99,999.
+    # There can be no more than 10 number segments in total.
+    # Empty segments (like in 1..2) are not allowed.
     model_3d: Optional[Model3D] = None
     custom_attributes: Dict[str, str] = Field(default_factory=dict)
 
