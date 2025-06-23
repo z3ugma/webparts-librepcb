@@ -62,4 +62,3 @@ def render_footprint_sync(library_path: Path, footprint_uuid: str) -> str:
     except Exception as e:
         logger.error(f"--- Footprint Rendering Failed ---\n{e}")
         raise
-

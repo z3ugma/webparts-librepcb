@@ -34,8 +34,10 @@ class LibraryManager(QObject):
         log_dir = WEBPARTS_DIR / part_uuid
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file_path = log_dir / WebPartsFilename.CONVERSION_LOG.value
-        file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler = logging.FileHandler(log_file_path, mode="w", encoding="utf-8")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         file_handler.setFormatter(formatter)
         logging.getLogger().addHandler(file_handler)
         logger.info(f"Conversion log started at: {log_file_path}")
@@ -95,7 +97,7 @@ class LibraryManager(QObject):
                 logger.info("--- Footprint Generation Succeeded ---")
             else:
                 logger.error("--- Footprint Generation Failed ---")
-            
+
             logger.info("Creating manifests...")
             self._create_manifests(library_part, part_pkg_dir)
             logger.info("  OK.")
@@ -120,7 +122,7 @@ class LibraryManager(QObject):
                         with open(manifest_path, "r") as f:
                             part_data = json.load(f)
                             part = LibraryPart.model_validate(part_data)
-                            
+
                             # Status is determined ONLY from individual element manifests
                             # to maintain single source of truth
                             part.status.footprint = self._get_element_status(
@@ -138,11 +140,13 @@ class LibraryManager(QObject):
 
                             # Hydrate asset paths
                             self._hydrate_asset_paths(part)
-                            
+
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
-                        logger.error(f"❌ Failed to load part from {manifest_path}: {e}")
-        
+                        logger.error(
+                            f"❌ Failed to load part from {manifest_path}: {e}"
+                        )
+
         return parts
 
     def _hydrate_asset_paths(self, part: LibraryPart):
@@ -174,18 +178,17 @@ class LibraryManager(QObject):
             if footprint_svg_path.exists():
                 part.footprint.svg_path = str(footprint_svg_path.resolve())
 
-
     def _get_element_status(
         self, element: LibrePCBElement, element_uuid: str
     ) -> StatusValue:
         """Reads the status from a given element's .wp manifest."""
         if not element_uuid:
             return StatusValue.UNAVAILABLE
-        
+
         # Use the new helper properties to get paths
         lp_path = element.get_lp_path(element_uuid)
         wp_path = element.get_wp_path(element_uuid)
-        
+
         if not wp_path.exists():
             # If the .wp file doesn't exist, but the .lp file does, it's an error.
             if lp_path.exists():
@@ -196,7 +199,7 @@ class LibraryManager(QObject):
         # If the .wp manifest exists, but the .lp file doesn't, it needs review.
         if not lp_path.exists():
             return StatusValue.NEEDS_REVIEW
-            
+
         try:
             with open(wp_path, "r") as f:
                 data = json.load(f)
@@ -206,11 +209,15 @@ class LibraryManager(QObject):
             logger.error(f"Error reading status manifest {wp_path}: {e}")
             return StatusValue.ERROR
 
-    def _map_search_result_to_library_part(self, search_result: SearchResult) -> LibraryPart:
+    def _map_search_result_to_library_part(
+        self, search_result: SearchResult
+    ) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
         search_dict = search_result.model_dump()
-        if not search_dict.get('uuid'):
-            search_dict['uuid'] = search_result.uuid or f"search-{search_result.lcsc_id}"
+        if not search_dict.get("uuid"):
+            search_dict["uuid"] = (
+                search_result.uuid or f"search-{search_result.lcsc_id}"
+            )
         return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(
