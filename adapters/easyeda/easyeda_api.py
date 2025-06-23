@@ -1,17 +1,16 @@
 import json
 import logging
-from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
 import requests
 
+import constants as const
 from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
 from adapters.search_engine import SearchEngine, Vendor
 from models.common_info import FootprintInfo, ImageInfo
 from models.search_result import SearchResult
-from svg_utils import render_svg_to_png_bytes
-import constants as const
+from svg_utils import render_svg_file_to_png_file
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +44,11 @@ class EasyEDAApi(SearchEngine):
         self, lcsc_id: str, svg_data: dict
     ) -> tuple[Optional[str], Optional[str]]:
         """
-        Generates footprint PNG and SVG with pad numbers.
+        Generates footprint SVG and a high-quality PNG, adding pad numbers to the SVG first.
         Returns (png_path, svg_path) tuple.
         """
+        import shutil
+
         from svg_add_pad_labels import add_pad_numbers_to_svg_file
 
         png_cache_path = self._get_cache_path(f"footprint_{lcsc_id}", "png")
@@ -57,46 +58,38 @@ class EasyEDAApi(SearchEngine):
             return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
 
         try:
-            svg_string = svg_data["result"][1]["svg"]
+            raw_svg_string = svg_data["result"][1]["svg"]
         except (IndexError, KeyError, TypeError):
             logger.warning(f"No footprint SVG found in svg_data for {lcsc_id}.")
             return None, None
 
-        # Save original SVG to a temporary file
+        # Save the raw SVG to a temporary file for processing
         temp_svg_path = self._get_cache_path(f"footprint_{lcsc_id}_temp", "svg")
-        with open(temp_svg_path, "w") as f:
-            f.write(svg_string)
+        temp_svg_path.write_text(raw_svg_string, encoding="utf-8")
 
-        # Add pad numbers to the SVG (this creates a .text.svg file)
+        # Add pad numbers to the SVG. This creates a new file with a `.text.svg` suffix.
         add_pad_numbers_to_svg_file(str(temp_svg_path))
+        labeled_svg_path = temp_svg_path.with_suffix(".svg.text.svg")
 
-        # The function creates a file with .text.svg suffix
-        labeled_svg_path = f"{temp_svg_path}.text.svg"
-
-        # Move the labeled SVG to the final cache location
-        import shutil
-
-        if Path(labeled_svg_path).exists():
-            shutil.move(labeled_svg_path, svg_cache_path)
+        # If pad numbering succeeded, use the labeled SVG; otherwise, use the original.
+        if labeled_svg_path.exists():
+            shutil.move(str(labeled_svg_path), svg_cache_path)
+            logger.info(f"Used labeled SVG for {lcsc_id}.")
         else:
-            # If pad numbering failed, use the original SVG
-            shutil.move(temp_svg_path, svg_cache_path)
-            logger.warning(f"Pad numbering failed for {lcsc_id}, using original SVG")
+            shutil.move(str(temp_svg_path), svg_cache_path)
+            logger.warning(f"Pad numbering failed for {lcsc_id}, using original SVG.")
 
-        # Clean up temp file if it still exists
+        # Clean up the original temp file if it's still there
         if temp_svg_path.exists():
             temp_svg_path.unlink()
 
-        # Convert the labeled SVG to PNG
-        with open(svg_cache_path, "r") as f:
-            labeled_svg_content = f.read()
-        png_data = render_svg_to_png_bytes(
-            labeled_svg_content.encode("utf-8"), 1024, 1024
-        )
-        if png_data:
-            self._save_to_cache(png_cache_path, png_data)
-            return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
-        return None, None
+        # Render the final SVG (with or without labels) to a high-quality PNG
+        if svg_cache_path.exists():
+            render_svg_file_to_png_file(str(svg_cache_path), str(png_cache_path))
+            if png_cache_path.exists():
+                return str(png_cache_path.resolve()), str(svg_cache_path.resolve())
+
+        return None, str(svg_cache_path.resolve())
 
     def _generate_symbol_svg_and_png(
         self, lcsc_id: str, svg_data: dict
@@ -118,13 +111,13 @@ class EasyEDAApi(SearchEngine):
             logger.warning(f"No symbol SVG found in svg_data for {lcsc_id}.")
             return None, None
 
-        png_data = render_svg_to_png_bytes(svg_string.encode("utf-8"), 1024, 1024)
-        if png_data:
-            self._save_to_cache(png_cache_path, png_data)
+        # Render the newly saved SVG file to a PNG file
+        render_svg_file_to_png_file(str(svg_cache_path), str(png_cache_path))
+
+        if png_cache_path.exists():
             return str(svg_cache_path.resolve()), str(png_cache_path.resolve())
 
         return str(svg_cache_path.resolve()), None
-
 
     def search(self, search_term: str) -> List[SearchResult]:
         payload = {

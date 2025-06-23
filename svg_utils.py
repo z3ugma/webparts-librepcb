@@ -1,62 +1,80 @@
-# Global imports
+import io
 import logging
-import xml.etree.ElementTree as ET
-from typing import List
 
 import cairosvg
-from PySide6.QtCore import QSize
-from models.footprint import Pad
+from PIL import Image
+
+from constants import IMAGE_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 
-SVG_NAMESPACE = "http://www.w3.org/2000/svg"
-ET.register_namespace("", SVG_NAMESPACE)
 
-
-def add_pad_numbers_to_svg(svg_data: bytes, pads: List[Pad]) -> bytes:
+def render_svg_file_to_png_file(svg_path: str, png_path: str):
     """
-    Adds text elements for pad numbers to the given SVG data.
-    """
-    try:
-        root = ET.fromstring(svg_data)
-        pad_numbers_group_id = "pcbPadNumbers"
-        # Find existing group or create a new one
-        pad_numbers_group = root.find(f".//{{{SVG_NAMESPACE}}}g[@id='{pad_numbers_group_id}']")
-        if pad_numbers_group is None:
-            pad_numbers_group = ET.Element(ET.QName(SVG_NAMESPACE, "g"))
-            pad_numbers_group.set("id", pad_numbers_group_id)
-            root.append(pad_numbers_group)
-        else:
-            pad_numbers_group.clear()  # Clear existing numbers to prevent duplicates
-
-        for pad in pads:
-            text_node = ET.Element(ET.QName(SVG_NAMESPACE, "text"))
-            text_node.set("x", str(pad.position.x))
-            text_node.set("y", str(pad.position.y))
-            text_node.set("font-family", "Verdana, Arial, sans-serif")
-            text_node.set("fill", "white")
-            text_node.set("text-anchor", "middle")
-            text_node.set("font-size", "2")  # Increased font size for visibility
-            text_node.set("dominant-baseline", "central")
-            text_node.set("style", "pointer-events: none; font-weight: bold;")
-            text_node.text = pad.number
-            pad_numbers_group.append(text_node)
-        return ET.tostring(root, encoding="utf-8")
-    except ET.ParseError as e:
-        logger.error(f"Error adding pad numbers to SVG: {e}")
-        return svg_data
-
-
-def render_svg_to_png_bytes(svg_data: bytes, width: int, height: int) -> bytes:
-    """
-    Renders SVG data to PNG byte data using CairoSVG.
+    Renders an SVG file to a high-resolution PNG, dynamically calculating the
+    scale factor to fit within the target dimensions defined in constants.
+    This version uses cairosvg for rendering.
     """
     try:
-        return cairosvg.svg2png(
-            bytestring=svg_data,
-            output_width=width,
-            output_height=height,
+        # Step 1: Get the natural size by rendering the SVG at scale=1.0 to memory
+        logger.info(f"Probing natural size of {svg_path} using cairosvg")
+        probe_png_data = cairosvg.svg2png(url=svg_path, scale=1.0)
+
+        # Use Pillow to read the dimensions of the in-memory PNG
+        with Image.open(io.BytesIO(probe_png_data)) as probe_image:
+            natural_width, natural_height = probe_image.size
+        logger.info(f"Natural SVG dimensions: {natural_width}x{natural_height}")
+
+        # Step 2: Calculate the required scale factor to fit within target dimensions
+        target_dim = IMAGE_DIMENSIONS
+        scale_x = target_dim / natural_width if natural_width > 0 else 0
+        scale_y = target_dim / natural_height if natural_height > 0 else 0
+
+        # Use the smaller scale factor to ensure the entire image fits
+        scale_factor = min(scale_x, scale_y) if min(scale_x, scale_y) > 0 else 1.0
+
+        logger.info(
+            f"Calculated scale factor of {scale_factor:.2f} to fit within {target_dim}px."
         )
+
+        # Step 3: Render the final image using the calculated scale factor
+        logger.info(f"Rendering {svg_path} to {png_path} with calculated scale.")
+        cairosvg.svg2png(url=svg_path, write_to=png_path, scale=scale_factor)
+
+        # Verify final dimensions
+        with Image.open(png_path) as final_image:
+            final_width, final_height = final_image.size
+        logger.info(
+            f"Successfully rendered PNG. Final dimensions: {final_width}x{final_height}"
+        )
+
     except Exception as e:
-        logger.error(f"CairoSVG rendering failed: {e}")
-        return b""
+        logger.error(f"Failed to render SVG with cairosvg: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    # --- Logger Setup ---
+    # This configures the root logger to print messages to the console.
+    # It will capture logs from this script and any other modules that use logging.
+    log_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    # Configure a handler to stream logs to the console (stdout)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter)
+
+    # Get the root logger, add the handler, and set the logging level
+    root_logger = logging.getLogger()
+    root_logger.addHandler(stream_handler)
+    root_logger.setLevel(logging.INFO)
+
+    # --- Test Execution ---
+    # Now that logging is configured, run the test functions.
+    logger.info("Starting SVG rendering test...")
+    for part in ["footprint", "rendered"]:
+        svg_path = f"WebParts.lplib/pkg/39e1b05b-30bd-4c64-a6c9-a1b67d9eb207/{part}.svg"
+        png_path = f"WebParts.lplib/pkg/39e1b05b-30bd-4c64-a6c9-a1b67d9eb207/{part}.png"
+        render_svg_file_to_png_file(svg_path, png_path)
+    logger.info("SVG rendering test finished.")
