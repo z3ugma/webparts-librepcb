@@ -10,8 +10,10 @@ import requests
 from models.search_result import SearchResult
 from constants import CACHE_DIR, USER_AGENT
 
+
 class Vendor(Enum):
     LCSC = "LCSC"
+
 
 class SearchEngine(ABC):
     def __init__(self) -> None:
