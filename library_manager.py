@@ -10,8 +10,8 @@ from models.library_part import LibraryPart
 from models.search_result import SearchResult
 from models.status import StatusValue
 from models.elements import LibrePCBElement
-from converters.footprint_converter import generate_footprint
 from constants import WebPartsFilename, WEBPARTS_DIR
+from workers.footprint_converter import generate_footprint
 
 logger = logging.getLogger(__name__)
 

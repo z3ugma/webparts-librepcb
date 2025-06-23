@@ -7,6 +7,7 @@ from models.footprint import Footprint
 
 logger = logging.getLogger(__name__)
 
+
 def generate_footprint(raw_cad_data: Dict[str, Any], pkg_dir: str) -> bool:
     """
     Parses raw EasyEDA data, generates a canonical Footprint, and serializes
@@ -20,7 +21,9 @@ def generate_footprint(raw_cad_data: Dict[str, Any], pkg_dir: str) -> bool:
         True if the generation was successful, False otherwise.
     """
     if not raw_cad_data or not raw_cad_data.get("packageDetail"):
-        logger.warning("No packageDetail found in raw CAD data. Skipping footprint generation.")
+        logger.warning(
+            "No packageDetail found in raw CAD data. Skipping footprint generation."
+        )
         return False
 
     try:
@@ -38,9 +41,11 @@ def generate_footprint(raw_cad_data: Dict[str, Any], pkg_dir: str) -> bool:
         librepcb_serializer = LibrePCBFootprintSerializer(invert_y=True)
         librepcb_serializer.serialize_to_file(canonical_footprint, pkg_dir)
         logger.info(f"Successfully serialized footprint to {pkg_dir}/package.lp")
-        
+
         return True
 
     except Exception as e:
-        logger.error(f"An error occurred during footprint generation: {e}", exc_info=True)
+        logger.error(
+            f"An error occurred during footprint generation: {e}", exc_info=True
+        )
         return False
