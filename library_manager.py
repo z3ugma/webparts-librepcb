@@ -102,6 +102,10 @@ class LibraryManager(QObject):
             self._create_manifests(library_part, part_pkg_dir)
             logger.info("  OK.")
 
+            logger.info("Hydrating final asset paths...")
+            self._hydrate_asset_paths(library_part)
+            logger.info("  OK.")
+
             logger.info("\nImport complete.")
             self.addPartFinished.emit(library_part)
         except Exception as e:

@@ -84,7 +84,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QGraphicsView" name="librepcbFootprintView"/>
+         <widget class="LibraryElementImageWidget" name="librepcbFootprintView"/>
         </item>
        </layout>
       </widget>

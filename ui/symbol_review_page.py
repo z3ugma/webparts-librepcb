@@ -1,18 +1,11 @@
 import logging
 import os
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QResizeEvent
+from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter
 
-from .custom_widgets import ZoomPanGraphicsView
+from .library_element_image_widget import LibraryElementImageWidget
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +14,8 @@ class SymbolReviewPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self._initial_fit_done = False
-
         loader = QUiLoader()
+        loader.registerCustomWidget(LibraryElementImageWidget)
         ui_file_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "symbol_review_page.ui"
         )
@@ -33,45 +25,42 @@ class SymbolReviewPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.ui)
 
-        placeholder_view = self.ui.findChild(QGraphicsView, "easyedaSymbolView")
-
-        if placeholder_view:
-            self.symbol_scene = QGraphicsScene(self)
-            self.symbol_pixmap_item = QGraphicsPixmapItem()
-            self.symbol_scene.addItem(self.symbol_pixmap_item)
-
-            self.symbol_image_view = ZoomPanGraphicsView(self.symbol_scene, self)
-
-            parent_layout = placeholder_view.parent().layout()
-            if parent_layout:
-                parent_layout.replaceWidget(placeholder_view, self.symbol_image_view)
-                placeholder_view.deleteLater()
-            else:
-                logger.error(
-                    "Could not find parent layout to replace placeholder view."
-                )
+        self.vertical_splitter = self.ui.findChild(QSplitter, "vertical_splitter")
+        if self.vertical_splitter:
+            # Set initial size ratio to 3:1 (images:messages)
+            self.vertical_splitter.setSizes([300, 100])
         else:
-            logger.error("Could not find 'easyedaSymbolView' in the UI.")
+            logger.error("Could not find 'vertical_splitter' in the UI.")
+
+        self.symbol_splitter = self.ui.findChild(QSplitter, "symbol_splitter")
+        if self.symbol_splitter:
+            # Set initial size ratio to 1:1 (left:right)
+            self.symbol_splitter.setSizes([200, 200])
+        else:
+            logger.error("Could not find 'symbol_splitter' in the UI.")
+
+        self.easyeda_preview = self.ui.findChild(
+            LibraryElementImageWidget, "easyedaSymbolView"
+        )
+        self.librepcb_preview = self.ui.findChild(
+            LibraryElementImageWidget, "librepcbSymbolView"
+        )
+
+        if self.easyeda_preview:
+            self.easyeda_preview.clear("Symbol Not Available")
+        else:
+            logger.error("Could not find 'easyedaSymbolView' widget.")
+
+        if self.librepcb_preview:
+            self.librepcb_preview.show_text("Not Implemented")
+        else:
+            logger.error("Could not find 'librepcbSymbolView' widget.")
 
     def set_symbol_image(self, pixmap: QPixmap):
-        if hasattr(self, "symbol_pixmap_item"):
-            self._initial_fit_done = False  # Reset flag for new images
-            if pixmap and not pixmap.isNull():
-                self.symbol_pixmap_item.setPixmap(pixmap)
-            else:
-                self.symbol_pixmap_item.setPixmap(QPixmap())
+        if self.easyeda_preview:
+            self.easyeda_preview.show_pixmap(pixmap)
 
-    def resizeEvent(self, event: QResizeEvent):
-        """
-        Handle resize events to perform the initial fit-in-view.
-        """
-        super().resizeEvent(event)
-        if not self._initial_fit_done:
-            if self.symbol_image_view.viewport().size().width() > 0:
-                logger.info(
-                    f"Performing initial fit for symbol image with viewport size: {self.symbol_image_view.viewport().size()}"
-                )
-                self.symbol_image_view.fitInView(
-                    self.symbol_pixmap_item, Qt.KeepAspectRatio
-                )
-                self._initial_fit_done = True
+    def set_librepcb_symbol_image(self, pixmap: QPixmap):
+        if self.librepcb_preview:
+            self.librepcb_preview.show_pixmap(pixmap)
+

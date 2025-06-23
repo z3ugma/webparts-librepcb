@@ -341,7 +341,7 @@ class SearchPage(QWidget):
                 )
             else:
                 self._original_symbol_pixmap = None
-                self.symbol_image_label.setText("Symbol Not Available")
+                self.symbol_image_label.setText(const.UIText.IMAGE_NOT_AVAILABLE.value)
 
     def set_footprint_image(self, pixmap: QPixmap):
         if self.footprint_image_label:
@@ -356,7 +356,9 @@ class SearchPage(QWidget):
                 )
             else:
                 self._original_footprint_pixmap = None
-                self.footprint_image_label.setText("Footprint Not Available")
+                self.footprint_image_label.setText(
+                    const.UIText.IMAGE_NOT_AVAILABLE.value
+                )
 
     def get_footprint_pixmap(self) -> QPixmap:
         if self.footprint_image_label and self.footprint_image_label.pixmap():

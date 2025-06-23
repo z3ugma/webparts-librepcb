@@ -8,11 +8,12 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
+    QSplitter,
 )
 
 from .custom_widgets import ZoomPanGraphicsView
+from .library_element_image_widget import LibraryElementImageWidget
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,8 @@ class FootprintReviewPage(QWidget):
         super().__init__(parent)
 
         loader = QUiLoader()
+        # Register the custom widget for promotion
+        loader.registerCustomWidget(LibraryElementImageWidget)
         ui_file_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "footprint_review_page.ui"
         )
@@ -35,41 +38,57 @@ class FootprintReviewPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.ui)
 
-        placeholder_view = self.ui.findChild(QGraphicsView, "footprint_image_container")
-
-        if placeholder_view:
-            self.footprint_scene = QGraphicsScene(self)
-            self.footprint_pixmap_item = QGraphicsPixmapItem()
-            self.footprint_scene.addItem(self.footprint_pixmap_item)
-
-            self.footprint_image_view = ZoomPanGraphicsView(self.footprint_scene, self)
-
-            parent_layout = placeholder_view.parent().layout()
-            if parent_layout:
-                parent_layout.replaceWidget(placeholder_view, self.footprint_image_view)
-                placeholder_view.deleteLater()
-            else:
-                logger.error(
-                    "Could not find parent layout to replace placeholder view."
-                )
+        self.vertical_splitter = self.ui.findChild(QSplitter, "vertical_splitter")
+        if self.vertical_splitter:
+            # Set initial size ratio to 3:1 (images:messages)
+            self.vertical_splitter.setSizes([300, 100])
         else:
+            logger.error("Could not find 'vertical_splitter' in the UI.")
+
+        self.footprint_splitter = self.ui.findChild(QSplitter, "footprint_splitter")
+        if self.footprint_splitter:
+            # Set initial size ratio to 1:1 (left:right)
+            self.footprint_splitter.setSizes([200, 200])
+        else:
+            logger.error("Could not find 'footprint_splitter' in the UI.")
+
+        self._setup_easyeda_preview()
+
+        # The generated preview is now a custom widget promoted from the UI file
+        self.librepcb_preview = self.ui.findChild(
+            LibraryElementImageWidget, "librepcbFootprintView"
+        )
+        if self.librepcb_preview:
+            self.librepcb_preview.show_text("Not Implemented")
+        else:
+            logger.error("Could not find 'librepcbFootprintView' widget.")
+
+    def _setup_easyeda_preview(self):
+        """Configures the left-side image viewer for the EasyEDA footprint."""
+        placeholder_view = self.ui.findChild(QGraphicsView, "footprint_image_container")
+        if not placeholder_view:
             logger.error("Could not find 'footprint_image_container' in the UI.")
+            return
+
+        self.footprint_image_view = LibraryElementImageWidget(self)
+        parent_layout = placeholder_view.parent().layout()
+        if parent_layout:
+            parent_layout.replaceWidget(placeholder_view, self.footprint_image_view)
+            placeholder_view.deleteLater()
+        else:
+            logger.error("Could not find parent layout for EasyEDA preview.")
 
     def set_footprint_image(self, pixmap: QPixmap):
         """
-        Sets the footprint image in the container and scales it appropriately.
+        Sets the EasyEDA footprint image in the left-side container.
         """
-        if hasattr(self, "footprint_pixmap_item"):
-            if pixmap and not pixmap.isNull():
-                self.footprint_pixmap_item.setPixmap(pixmap)
-                # Use a timer to ensure the view has its final size before fitting
-                QTimer.singleShot(
-                    0,
-                    lambda: self.footprint_image_view.fitInView(
-                        self.footprint_pixmap_item, Qt.KeepAspectRatio
-                    ),
-                )
-            else:
-                self.footprint_pixmap_item.setPixmap(
-                    QPixmap()
-                )  # Clear if pixmap is null
+        if hasattr(self, "footprint_image_view"):
+            self.footprint_image_view.show_pixmap(pixmap)
+
+    def set_librepcb_footprint_image(self, pixmap: QPixmap):
+        """
+        Sets the generated LibrePCB footprint image in the right-side container.
+        """
+        if hasattr(self, "librepcb_preview"):
+            self.librepcb_preview.show_pixmap(pixmap)
+

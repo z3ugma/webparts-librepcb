@@ -18,6 +18,7 @@ from search import Search
 from .custom_widgets import ClickableLabel
 from .footprint_review_page import FootprintReviewPage
 from .hero_image_widget import HeroImageWidget
+from .library_element_image_widget import LibraryElementImageWidget
 from .page_library import LibraryPage
 from .page_library_element import LibraryElementPage
 from .page_search import SearchPage
@@ -257,6 +258,7 @@ def main():
     loader.registerCustomWidget(FootprintReviewPage)
     loader.registerCustomWidget(SymbolReviewPage)
     loader.registerCustomWidget(ClickableLabel)
+    loader.registerCustomWidget(LibraryElementImageWidget)
     ui_file_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "workbench.ui"
     )
