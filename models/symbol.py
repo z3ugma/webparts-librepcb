@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from .elements import BaseElement
 from .graphics import GraphicElement, Point
 
+
 class ElectricalType(str, Enum):
     UNDEFINED = "undefined"
     INPUT = "input"
@@ -56,6 +57,7 @@ class Pin(BaseModel):
     inverted: bool = False
     clock: bool = False
     spice_number: Optional[str] = None
+
 
 class Symbol(BaseElement):
     pins: List[Pin] = Field(default_factory=list)

@@ -6,6 +6,7 @@ from pytestqt.qtbot import QtBot
 
 from ui.hero_image_widget import HeroImageWidget
 
+
 @pytest.fixture(scope="session")
 def app():
     """Create a single QApplication instance for the whole test session."""
@@ -14,12 +15,14 @@ def app():
         q_app = QApplication([])
     return q_app
 
+
 @pytest.fixture
 def widget(qtbot: QtBot) -> HeroImageWidget:
     """Create and show a HeroImageWidget instance."""
     test_widget = HeroImageWidget()
     qtbot.addWidget(test_widget)
     return test_widget
+
 
 class TestHeroImageWidget:
     def test_initial_state(self, widget: HeroImageWidget):
@@ -51,9 +54,9 @@ class TestHeroImageWidget:
         """Test that show_pixmap correctly displays an image."""
         pixmap = QPixmap(100, 100)
         pixmap.fill(Qt.red)
-        
+
         widget.show_pixmap(pixmap)
-        
+
         assert not widget.hero_text.isVisible()
         assert widget.hero_item.isVisible()
         assert widget.hero_item.pixmap().size() == pixmap.size()
@@ -61,7 +64,7 @@ class TestHeroImageWidget:
     def test_show_pixmap_with_null_pixmap(self, widget: HeroImageWidget):
         """Test that providing a null pixmap shows the 'No Image' text."""
         widget.show_pixmap(QPixmap())
-        
+
         assert widget.hero_text.toPlainText() == "No Image"
         assert widget.hero_text.isVisible()
         assert not widget.hero_item.isVisible()
@@ -71,11 +74,11 @@ class TestHeroImageWidget:
         # First, set it to a different state
         pixmap = QPixmap(10, 10)
         widget.show_pixmap(pixmap)
-        assert not widget.hero_text.isVisible() # Pre-condition
-        
+        assert not widget.hero_text.isVisible()  # Pre-condition
+
         # Now, clear it
         widget.clear()
-        
+
         assert widget.hero_text.toPlainText() == "Select a part to view details"
         assert widget.hero_text.isVisible()
         assert not widget.hero_item.isVisible()

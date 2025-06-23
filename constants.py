@@ -23,12 +23,13 @@ class WebPartsFilename(Enum):
     RENDERED_SVG = "rendered.svg"
     RENDERED_PNG = "rendered.png"
 
+
 # --- Status & Workflow ---
 WORKFLOW_MAPPING = {
-    'footprint': 'footprint',
-    'symbol': 'symbol',
-    'assembly': 'component',
-    'finalize': 'device',
+    "footprint": "footprint",
+    "symbol": "symbol",
+    "assembly": "component",
+    "finalize": "device",
 }
 
 # --- API & Network ---

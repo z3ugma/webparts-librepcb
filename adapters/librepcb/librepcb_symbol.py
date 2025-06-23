@@ -14,6 +14,7 @@ from models.symbol import PinDirection, Symbol
 from .s_expression import SExpSymbol, serialize_to_sexpr
 import constants as const
 
+
 class LibrePCBSymbolSerializer:
     def __init__(self, invert_y: bool = False):
         """

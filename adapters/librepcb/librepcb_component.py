@@ -14,6 +14,7 @@ from .s_expression import SExpSymbol, serialize_to_sexpr
 
 import constants as const
 
+
 class LibrePCBComponentSerializer:
     def _serialize_signals(self, symbol: Symbol) -> List[Tuple]:
         """Serialize symbol pins to LibrePCB format, ensuring grid alignment."""

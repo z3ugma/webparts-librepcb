@@ -16,6 +16,7 @@ from .librepcb_uuid import create_derived_uuidv4
 from .s_expression import SExpSymbol, serialize_to_sexpr
 import constants as const
 
+
 class LibrePCBDeviceSerializer:
     def _serialize_signals(self, symbol: Symbol, footprint: Footprint) -> List[Tuple]:
         pin_tuples = []

@@ -13,8 +13,12 @@ from adapters.search_engine import SearchEngine, CACHE_DIR
 
 class DummyEngine(SearchEngine):
     """A concrete implementation of SearchEngine for testing."""
-    def search(self, search_term): pass
-    def get_fully_hydrated_search_result(self, search_result): pass
+
+    def search(self, search_term):
+        pass
+
+    def get_fully_hydrated_search_result(self, search_result):
+        pass
 
 
 @pytest.fixture
@@ -24,12 +28,12 @@ def cache_test_engine(tmp_path):
     to a temporary directory provided by pytest's tmp_path fixture.
     """
     # Point the module-level CACHE_DIR to the temp path for the duration of the test
-    with patch('adapters.search_engine.CACHE_DIR', tmp_path):
+    with patch("adapters.search_engine.CACHE_DIR", tmp_path):
         engine = DummyEngine()
         yield engine
 
 
-@patch('adapters.search_engine.requests.get')
+@patch("adapters.search_engine.requests.get")
 def test_download_first_time(mock_get, cache_test_engine):
     """
     Test that an image is downloaded from the network and saved to cache
@@ -37,24 +41,26 @@ def test_download_first_time(mock_get, cache_test_engine):
     """
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_response.content = b'fake-image-data'
+    mock_response.content = b"fake-image-data"
     mock_get.return_value = mock_response
-    
+
     image_url = "http://example.com/image.png"
-    
+
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
-    
-    mock_get.assert_called_once_with(url=image_url, headers={"User-Agent": "WebParts v0.1"})
+
+    mock_get.assert_called_once_with(
+        url=image_url, headers={"User-Agent": "WebParts v0.1"}
+    )
     assert result is not None
     data, cache_path = result
-    assert data == b'fake-image-data'
-    
+    assert data == b"fake-image-data"
+
     expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
     assert expected_cache_file.exists()
-    assert expected_cache_file.read_bytes() == b'fake-image-data'
+    assert expected_cache_file.read_bytes() == b"fake-image-data"
 
 
-@patch('adapters.search_engine.requests.get')
+@patch("adapters.search_engine.requests.get")
 def test_download_from_cache(mock_get, cache_test_engine):
     """
     Test that an image is loaded from the cache on the second request
@@ -64,26 +70,26 @@ def test_download_from_cache(mock_get, cache_test_engine):
     expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
     # Ensure parent directory exists
     expected_cache_file.parent.mkdir(parents=True, exist_ok=True)
-    expected_cache_file.write_bytes(b'cached-data')
-    
+    expected_cache_file.write_bytes(b"cached-data")
+
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
-    
+
     mock_get.assert_not_called()
     assert result is not None
     data, cache_path = result
-    assert data == b'cached-data'
+    assert data == b"cached-data"
 
 
-@patch('adapters.search_engine.requests.get')
+@patch("adapters.search_engine.requests.get")
 def test_download_network_failure(mock_get, cache_test_engine):
     """
     Test that the download method handles network failures gracefully.
     """
     mock_get.side_effect = requests.exceptions.RequestException("Network error")
     image_url = "http://example.com/image.png"
-    
+
     result = cache_test_engine.download_image_from_url("test_vendor", image_url)
-    
+
     assert result is None
     expected_cache_file = cache_test_engine._get_cache_path_for_image(image_url)
     assert not expected_cache_file.exists()
