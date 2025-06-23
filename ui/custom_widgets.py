@@ -36,6 +36,8 @@ class ZoomPanGraphicsView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         self.setInteractive(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._is_panning = False
         self._last_mouse_position = None
         self._initial_fit_done = False
@@ -54,56 +56,46 @@ class ZoomPanGraphicsView(QGraphicsView):
 
     def wheelEvent(self, event: QWheelEvent):
         """Handles mouse wheel and trackpad gestures for zooming and panning."""
-        # Differentiate between zoom (vertical) and pan (horizontal) on trackpads
-        if not event.pixelDelta().isNull():
-            # It's a trackpad
-            if abs(event.pixelDelta().y()) > abs(event.pixelDelta().x()):
-                # Vertical scroll is dominant: Zoom
-                if event.pixelDelta().y() < 0 and self._is_at_minimum_zoom():
-                    return  # Prevent zooming out further
+        # Calculate the minimum 'fit-in-view' scale
+        scene_rect = self.scene().itemsBoundingRect()
+        if scene_rect.isEmpty():
+            # Nothing to zoom, so just accept the event
+            event.accept()
+            return
+
+        view_rect = self.viewport().rect()
+        h_scale = view_rect.width() / scene_rect.width() if scene_rect.width() > 0 else 1
+        v_scale = (
+            view_rect.height() / scene_rect.height() if scene_rect.height() > 0 else 1
+        )
+        fit_scale = min(h_scale, v_scale)
+
+        # Differentiate between trackpad and mouse wheel
+        if not event.pixelDelta().isNull():  # Trackpad
+            if abs(event.pixelDelta().y()) > abs(event.pixelDelta().x()):  # Zooming
                 zoom_factor = 1 + event.pixelDelta().y() / 360.0
+                if zoom_factor < 1:  # Zooming out
+                    # If applying zoom_factor would make it too small, snap to fit
+                    if self.transform().m11() * zoom_factor < fit_scale:
+                        self.fitInView(scene_rect, Qt.KeepAspectRatio)
+                        return
                 self.scale(zoom_factor, zoom_factor)
-            else:
-                # Horizontal scroll is dominant: Pan
+            else:  # Panning
                 self.horizontalScrollBar().setValue(
                     self.horizontalScrollBar().value() - event.pixelDelta().x()
                 )
-                self.verticalScrollBar().setValue(
-                    self.verticalScrollBar().value() - event.pixelDelta().y()
-                )
-        elif not event.angleDelta().isNull():
-            # It's a traditional mouse wheel: Zoom only
-            if event.angleDelta().y() < 0 and self._is_at_minimum_zoom():
-                return  # Prevent zooming out further
-
+        elif not event.angleDelta().isNull():  # Mouse Wheel
             zoom_in_factor = 1.15
             zoom_out_factor = 1 / zoom_in_factor
-            if event.angleDelta().y() > 0:
+            if event.angleDelta().y() > 0:  # Zooming in
                 self.scale(zoom_in_factor, zoom_in_factor)
-            else:
-                self.scale(zoom_out_factor, zoom_out_factor)
+            else:  # Zooming out
+                if self.transform().m11() * zoom_out_factor < fit_scale:
+                    self.fitInView(scene_rect, Qt.KeepAspectRatio)
+                else:
+                    self.scale(zoom_out_factor, zoom_out_factor)
         else:
             event.accept()
-
-    def _is_at_minimum_zoom(self) -> bool:
-        """Checks if the view is at or below the 'fit in view' zoom level."""
-        if not self.scene() or not self.scene().items():
-            return True
-
-        current_scale = self.transform().m11()
-
-        view_rect = self.viewport().rect()
-        scene_rect = self.scene().itemsBoundingRect()
-
-        if scene_rect.isEmpty() or scene_rect.width() == 0 or scene_rect.height() == 0:
-            return True
-
-        h_scale = view_rect.width() / scene_rect.width()
-        v_scale = view_rect.height() / scene_rect.height()
-        fit_scale = min(h_scale, v_scale)
-
-        # Use a small tolerance for floating point comparisons
-        return current_scale <= fit_scale + 0.001
 
     def mousePressEvent(self, event: QMouseEvent):
         """Initiates panning with the left mouse button."""
