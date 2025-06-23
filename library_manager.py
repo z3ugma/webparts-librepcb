@@ -1,16 +1,16 @@
-import logging
 import json
+import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 from PySide6.QtCore import QObject, Signal
 
+from constants import WEBPARTS_DIR, WebPartsFilename
+from models.elements import LibrePCBElement
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
 from models.status import StatusValue
-from models.elements import LibrePCBElement
-from constants import WebPartsFilename, WEBPARTS_DIR, LIBRARY_DIR
 from workers.footprint_converter import generate_footprint
 from workers.footprint_renderer import render_footprint_sync
 from workers.symbol_converter import generate_symbol
@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 class LibraryManager(QObject):
     """A class to manage all library operations."""
-
-    addPartFinished = Signal(object)  # Will emit LibraryPart or None
 
     def __init__(self, parent=None):
         """Initializes the LibraryManager."""
@@ -124,10 +122,10 @@ class LibraryManager(QObject):
             logger.info("  OK.")
 
             logger.info("\nImport complete.")
-            self.addPartFinished.emit(library_part)
+            return library_part
         except Exception as e:
             logger.error(f"\n[ERROR] An exception occurred: {e}", exc_info=True)
-            self.addPartFinished.emit(None)
+            return None
 
     def get_all_parts(self) -> list[LibraryPart]:
         """Scans the library and returns a list of all parts."""

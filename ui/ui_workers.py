@@ -1,70 +1,125 @@
+# ui/ui_workers.py
 import logging
-from PySide6.QtCore import QObject, Signal, Slot, Slot, Slot, Slot, Slot, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
-from adapters.search_engine import Vendor
 from models.search_result import SearchResult
+from search import Search
+from library_manager import LibraryManager
 
 logger = logging.getLogger(__name__)
 
-# --- UI-Facing Workers ---
-
 
 class SearchWorker(QObject):
-    """Handles background searching for components."""
+    """
+    A QObject worker for performing searches in a separate thread.
+    """
 
     search_completed = Signal(list)
     search_failed = Signal(str)
 
-    def __init__(self, api_service):
+    def __init__(self, api_service: Search):
         super().__init__()
-        self.api_service = api_service
+        self._api_service = api_service
 
-    def start_search(self, vendor: Vendor, search_term: str):
+    @Slot(object, str)
+    def start_search(self, vendor, search_term):
         try:
-            self.search_completed.emit(self.api_service.search(vendor, search_term))
+            results = self._api_service.search(vendor, search_term)
+            self.search_completed.emit(results)
         except Exception as e:
-            logger.error(f"SearchWorker failed: {e}", exc_info=True)
             self.search_failed.emit(str(e))
 
 
 class ImageWorker(QObject):
-    """Handles background downloading of images for the UI."""
+    """
+    A QObject worker for loading images in a separate thread.
+    """
 
     image_loaded = Signal(bytes, str, str)
     image_failed = Signal(str, str)
 
-    def __init__(self, api_service):
+    def __init__(self, api_service: Search):
         super().__init__()
-        self.api_service = api_service
+        self._api_service = api_service
 
-    def load_image(self, vendor: Vendor, image_url: str, image_type: str):
+    @Slot(object, str, str)
+    def load_image(self, vendor, image_url, image_type):
         try:
-            result = self.api_service.download_image_from_url(vendor, image_url)
-            if result:
-                image_data, cache_path = result
-                self.image_loaded.emit(image_data, image_type, cache_path)
-            else:
-                self.image_failed.emit("Failed to download image", image_type)
+            image_data, cache_path = self._api_service.download_image(vendor, image_url)
+            self.image_loaded.emit(image_data, image_type, cache_path)
         except Exception as e:
-            logger.error(f"ImageWorker failed: {e}", exc_info=True)
             self.image_failed.emit(str(e), image_type)
 
 
 class ComponentWorker(QObject):
-    """Handles background fetching of full component data (hydration)."""
+    """
+    A QObject worker for hydrating search results in a separate thread.
+    """
 
-    hydration_completed = Signal(SearchResult)
+    hydration_completed = Signal(object)
     hydration_failed = Signal(str)
 
-    def __init__(self, api_service):
+    def __init__(self, api_service: Search):
         super().__init__()
-        self.api_service = api_service
+        self._api_service = api_service
 
-    def hydrate_search_result(self, result: SearchResult):
+    @Slot(object)
+    def hydrate_search_result(self, search_result):
         try:
-            self.hydration_completed.emit(
-                self.api_service.get_fully_hydrated_search_result(result)
+            hydrated_result = self._api_service.get_fully_hydrated_search_result(
+                search_result
+            )
+            self.hydration_completed.emit(hydrated_result)
+        except Exception as e:
+            self.hydration_failed.emit(str(e))
+
+
+class AddPartWorker(QObject):
+    """
+    A QObject worker for adding a library part in a separate thread.
+    """
+
+    finished = Signal(object)
+    log_message = Signal(str)
+
+    def __init__(self, search_result: SearchResult):
+        super().__init__()
+        self._search_result = search_result
+        self._manager = LibraryManager()
+
+    @Slot()
+    def run(self):
+        """
+        Performs the long-running add-part operation.
+        """
+        # Set up a log handler that emits signals
+        handler = self.SignalLogHandler(self.log_message)
+        # The root logger will now propagate messages to our handler
+        logging.getLogger().addHandler(handler)
+
+        logger.info(f"Worker started for part {self._search_result.lcsc_id}")
+        library_part = None
+        try:
+            library_part = self._manager.add_part_from_search_result(
+                self._search_result
             )
         except Exception as e:
-            logger.error(f"ComponentWorker failed: {e}", exc_info=True)
-            self.hydration_failed.emit(str(e))
+            logger.error(
+                f"An exception occurred in the worker thread: {e}", exc_info=True
+            )
+        finally:
+            self.finished.emit(library_part)
+            logging.getLogger().removeHandler(handler)
+            logger.info("Worker finished.")
+
+    class SignalLogHandler(logging.Handler):
+        """A logging handler that emits a Qt signal."""
+
+        def __init__(self, log_signal: Signal):
+            super().__init__()
+            self.log_signal = log_signal
+            self.setFormatter(logging.Formatter("%(message)s"))
+
+        def emit(self, record):
+            msg = self.format(record)
+            self.log_signal.emit(msg)

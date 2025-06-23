@@ -29,24 +29,9 @@ from .hero_image_widget import HeroImageWidget
 from .part_info_widget import PartInfoWidget
 import constants as const
 
+from .ui_workers import AddPartWorker
+
 logger = logging.getLogger(__name__)
-
-
-# --- Custom Log Handler ---
-class QLogHandler(logging.Handler, QObject):
-    """A logging handler that emits a Qt signal for each log record."""
-
-    log_received = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__()
-        QObject.__init__(self, parent)
-        # Use a simple formatter for the UI log
-        self.setFormatter(logging.Formatter("%(message)s"))
-
-    def emit(self, record):
-        msg = self.format(record)
-        self.log_received.emit(msg)
 
 
 # --- Add to Library Dialog ---
@@ -54,6 +39,8 @@ class AddToLibraryDialog(QDialog):
     """
     Modal dialog to display add-to-library progress, with file and UI logging.
     """
+
+    part_added_to_library = Signal(object)
 
     def __init__(self, search_result: SearchResult, parent=None):
         super().__init__(parent)
@@ -77,34 +64,43 @@ class AddToLibraryDialog(QDialog):
         self.ok_button = button_box.addButton(QDialogButtonBox.Ok)
         self.ok_button.setEnabled(False)
         button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
         self.copy_button.clicked.connect(self._on_copy_to_clipboard)
         layout.addWidget(button_box)
 
         self.library_part = None
-        self.ui_log_handler = None
-        self.file_log_handler = None
 
+        # --- Worker Setup ---
         self._thread = QThread(self)
-        self._manager = LibraryManager()
-        self._manager.moveToThread(self._thread)
+        self._worker = AddPartWorker(search_result)
+        self._worker.moveToThread(self._thread)
 
-        self._setup_logging(search_result)
-
-        self._thread.started.connect(
-            lambda: self._manager.add_part_from_search_result(search_result)
-        )
-        self._manager.addPartFinished.connect(self._on_finished)
-        self._thread.finished.connect(self._manager.deleteLater)
+        # --- Connections ---
+        self._worker.log_message.connect(self.log_view.appendPlainText)
+        self._worker.finished.connect(self._on_finished)
+        self._thread.started.connect(self._worker.run)
+        self._thread.finished.connect(self._worker.deleteLater)
+        self.finished.connect(self._thread.quit)  # Clean up thread when dialog closes
 
         self._thread.start()
 
-    def _setup_logging(self, search_result: SearchResult):
-        """Creates and attaches UI and file-based log handlers."""
-        part_uuid = search_result.uuid or f"search-{search_result.lcsc_id}"
-        self.ui_log_handler = QLogHandler(self)
-        self.ui_log_handler.log_received.connect(self.log_view.appendPlainText)
-        logging.getLogger().addHandler(self.ui_log_handler)
-        self.file_log_handler = self._manager.setup_conversion_logging(part_uuid)
+    @Slot(object)
+    def _on_finished(self, library_part):
+        self.library_part = library_part
+        if library_part:
+            logger.info("\n✅ Success!")
+        else:
+            logger.error("\n❌ Failed.")
+        self.ok_button.setEnabled(True)
+        self._thread.quit()
+
+    def accept(self):
+        """
+        Overrides QDialog.accept() to emit the part signal only when OK is clicked.
+        """
+        if self.library_part:
+            self.part_added_to_library.emit(self.library_part)
+        super().accept()
 
     @Slot()
     def _on_copy_to_clipboard(self):
@@ -122,12 +118,6 @@ class AddToLibraryDialog(QDialog):
         self._thread.quit()
 
     def done(self, result):
-        if self.ui_log_handler:
-            logging.getLogger().removeHandler(self.ui_log_handler)
-            self.ui_log_handler = None
-        if self.file_log_handler:
-            self._manager.cleanup_conversion_logging(self.file_log_handler)
-            self.file_log_handler = None
         if self._thread and self._thread.isRunning():
             self._thread.quit()
             self._thread.wait(1000)
@@ -213,10 +203,8 @@ class SearchPage(QWidget):
                 return
 
         dialog = AddToLibraryDialog(self._current_search_result, self)
-        if dialog.exec():
-            if dialog.library_part:
-                self.part_added_to_library.emit(dialog.library_part)
-        dialog.deleteLater()
+        dialog.part_added_to_library.connect(self.part_added_to_library)
+        dialog.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
