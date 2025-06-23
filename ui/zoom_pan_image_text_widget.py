@@ -27,6 +27,7 @@ class ZoomPanImageAndTextWidget(QWidget):
         self.scene = QGraphicsScene()
         self.view = ZoomPanGraphicsView(self.scene, self)
         self.view.setToolTip("Pan by dragging, zoom with scroll wheel.")
+        self.view.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         self.item = QGraphicsPixmapItem()
         self.scene.addItem(self.item)
         self.stack.addWidget(self.view)
@@ -48,6 +49,7 @@ class ZoomPanImageAndTextWidget(QWidget):
             return
 
         self.item.setPixmap(pixmap)
+        self.scene.setSceneRect(self.item.boundingRect())
         self.stack.setCurrentWidget(self.view)
 
         QTimer.singleShot(0, self._fit_and_zoom)
