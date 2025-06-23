@@ -1,9 +1,10 @@
-from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from constants import DEFAULT_VERSION
 
 from .elements import BaseElement
 from .graphics import GraphicElement, Point
@@ -75,6 +76,11 @@ class Symbol(BaseElement):
     prefix_visible: bool = True
     name_position: Optional[Point] = None
     value_position: Optional[Point] = None
+    version_str: str = DEFAULT_VERSION
+    #     A version string consists of numbers separated by dots (e.g., 0.1 or 2024.06.21).
+    # Each number segment must be an unsigned integer between 0 and 99,999.
+    # There can be no more than 10 number segments in total.
+    # Empty segments (like in 1..2) are not allowed.
     custom_attributes: Dict[str, str] = Field(default_factory=dict)
 
     class Config:
