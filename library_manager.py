@@ -13,6 +13,8 @@ from models.elements import LibrePCBElement
 from constants import WebPartsFilename, WEBPARTS_DIR, LIBRARY_DIR
 from workers.footprint_converter import generate_footprint
 from workers.footprint_renderer import render_footprint_sync
+from workers.symbol_converter import generate_symbol
+from workers.symbol_renderer import render_symbol_sync as render_symbol_sync_alias
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,16 @@ class LibraryManager(QObject):
             else:
                 logger.error("--- Footprint Generation Failed ---")
 
+            logger.info("--- Starting Symbol Generation ---")
+            if generate_symbol(search_result.raw_cad_data, str(part_sym_dir)):
+                logger.info("--- Symbol Generation Succeeded ---")
+                try:
+                    render_symbol_sync_alias(part_sym_dir)
+                except Exception as e:
+                    logger.error(f"--- Symbol Rendering Failed ---\n{e}")
+            else:
+                logger.error("--- Symbol Generation Failed ---")
+
             logger.info("Creating manifests...")
             self._create_manifests(library_part, part_pkg_dir)
             logger.info("  OK.")
@@ -172,10 +184,13 @@ class LibraryManager(QObject):
             sym_dir = LibrePCBElement.SYMBOL.dir / part.symbol.uuid
             symbol_png_path = sym_dir / WebPartsFilename.SYMBOL_PNG.value
             symbol_svg_path = sym_dir / WebPartsFilename.SYMBOL_SVG.value
+            rendered_png_path = sym_dir / WebPartsFilename.RENDERED_PNG.value
             if symbol_png_path.exists():
                 part.symbol.png_path = str(symbol_png_path.resolve())
             if symbol_svg_path.exists():
                 part.symbol.svg_path = str(symbol_svg_path.resolve())
+            if rendered_png_path.exists():
+                part.symbol.rendered_png_path = str(rendered_png_path.resolve())
 
         # Footprint images
         if part.footprint and part.footprint.uuid:

@@ -64,7 +64,9 @@ class ZoomPanGraphicsView(QGraphicsView):
             return
 
         view_rect = self.viewport().rect()
-        h_scale = view_rect.width() / scene_rect.width() if scene_rect.width() > 0 else 1
+        h_scale = (
+            view_rect.width() / scene_rect.width() if scene_rect.width() > 0 else 1
+        )
         v_scale = (
             view_rect.height() / scene_rect.height() if scene_rect.height() > 0 else 1
         )

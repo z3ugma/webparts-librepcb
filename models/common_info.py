@@ -3,6 +3,7 @@ Defines common, shared Pydantic models used by both SearchResult and LibraryPart
 """
 
 from typing import Optional
+
 from pydantic import BaseModel
 
 

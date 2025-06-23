@@ -63,4 +63,3 @@ class SymbolReviewPage(QWidget):
     def set_librepcb_symbol_image(self, pixmap: QPixmap):
         if self.librepcb_preview:
             self.librepcb_preview.show_pixmap(pixmap)
-

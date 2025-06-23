@@ -92,4 +92,3 @@ class FootprintReviewPage(QWidget):
         """
         if hasattr(self, "librepcb_preview"):
             self.librepcb_preview.show_pixmap(pixmap)
-

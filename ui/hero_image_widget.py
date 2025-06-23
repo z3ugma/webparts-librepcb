@@ -23,4 +23,3 @@ class HeroImageWidget(ZoomPanImageAndTextWidget):
 
     def clear(self):
         super().clear(default_text=const.UIText.SELECT_PART.value)
-

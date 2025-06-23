@@ -254,6 +254,13 @@ class LibraryElementPage(QWidget):
         )
         self.page_SymbolReview.set_symbol_image(symbol_pixmap)
 
+        rendered_symbol_pixmap = (
+            QPixmap(component.symbol.rendered_png_path)
+            if hasattr(component, "symbol") and component.symbol.rendered_png_path
+            else QPixmap()
+        )
+        self.page_SymbolReview.set_librepcb_symbol_image(rendered_symbol_pixmap)
+
         self._update_workflow_status(component.status)
         self.go_to_step(0)
 
