@@ -18,8 +18,8 @@ from models.status import (
 )
 from workers.footprint_converter import generate_footprint
 from workers.footprint_renderer import render_and_check_footprint
-from workers.symbol_checker import check_symbol
 from workers.symbol_converter import generate_symbol
+from workers.symbol_renderer import render_and_check_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class LibraryManager(QObject):
                 logger.info(
                     "--- Footprint Generation Succeeded, now rendering and checking ---"
                 )
-                _, issues = render_and_check_footprint(str(part_pkg_dir))
+                _, issues = render_and_check_footprint(library_part)
                 self._update_element_manifest(
                     LibrePCBElement.PACKAGE, library_part.footprint.uuid, issues
                 )
@@ -115,10 +115,7 @@ class LibraryManager(QObject):
                 logger.info(
                     "--- Symbol Generation Succeeded, now rendering and checking ---"
                 )
-                # Note: We will create render_and_check_symbol in the next step
-                # _, issues = render_and_check_symbol(str(part_sym_dir))
-                issues = check_symbol(str(part_sym_dir))
-
+                _, issues = render_and_check_symbol(library_part)
                 self._update_element_manifest(
                     LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
                 )
@@ -436,11 +433,85 @@ class LibraryManager(QObject):
             logger.info("Successfully persisted reconciled manifest.")
         except IOError as e:
             logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
+
+    def reconcile_and_save_symbol_manifest(self, part: LibraryPart, issues: list) -> ElementManifest:
+        """
+        Reconciles new issues with the existing symbol manifest and saves it.
+        """
+        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
+        try:
+            if manifest_path.exists():
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            else:
+                manifest = ElementManifest()
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+            manifest = ElementManifest()
+
+        existing_messages = {
+            (msg.message, msg.severity): msg for msg in manifest.validation
+        }
+        reconciled_messages = []
+
+        for msg_text, severity_str, count in issues:
+            key = (msg_text, ValidationSeverity(severity_str))
+            new_msg = ValidationMessage(
+                message=msg_text,
+                severity=key[1],
+                count=count,
+            )
+            if key in existing_messages:
+                old_msg = existing_messages[key]
+                if old_msg.is_approved and old_msg.count == new_msg.count:
+                    new_msg.is_approved = True
+            reconciled_messages.append(new_msg)
+
+        manifest.validation = reconciled_messages
+
+        try:
+            with open(manifest_path, "w") as f:
+                f.write(manifest.model_dump_json(indent=2))
+            logger.info("Successfully persisted reconciled symbol manifest.")
+        except IOError as e:
+            logger.error(f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True)
         return manifest
 
-    def update_footprint_approval_status(
+    def update_symbol_approval_status(
         self, part: LibraryPart, msg_index: int, is_approved: bool
     ) -> None:
+        """
+        Handles the state change of an approval checkbox for a symbol.
+        """
+        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
+        try:
+            if manifest_path.exists():
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            else:
+                logger.error(f"Manifest not found at {manifest_path}")
+                return
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+            return
+
+        if not (0 <= msg_index < len(manifest.validation)):
+            logger.error(f"Cannot update approval for invalid index {msg_index}")
+            return
+
+        manifest.validation[msg_index].is_approved = is_approved
+
+        try:
+            with open(manifest_path, "w") as f:
+                f.write(manifest.model_dump_json(indent=2))
+            logger.info(
+                f"Successfully persisted symbol approval state for message {msg_index} to {is_approved}."
+            )
+        except IOError as e:
+            logger.error(f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True)
+
         """
         Handles the state change of an approval checkbox.
         """

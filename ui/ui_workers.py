@@ -6,6 +6,7 @@ from models.search_result import SearchResult
 from search import Search
 from models.library_part import LibraryPart
 from workers.footprint_renderer import render_and_check_footprint
+from workers.symbol_renderer import render_and_check_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -161,3 +162,40 @@ class FootprintUpdateWorker(QObject):
         finally:
             self.finished.emit()
             logger.info("FootprintUpdateWorker finished.")
+
+
+class SymbolUpdateWorker(QObject):
+    """
+    A worker to refresh a symbol's rendered image and validation checks.
+    """
+
+    finished = Signal()
+    update_complete = Signal(str, list)
+    update_failed = Signal(str)
+
+    def __init__(self, part: LibraryPart):
+        super().__init__()
+        self._part = part
+
+    @Slot()
+    def run(self):
+        """
+        Performs the long-running render and check operation.
+        """
+        logger.info(f"SymbolUpdateWorker started for {self._part.part_name}")
+        try:
+            png_path, issues = render_and_check_symbol(self._part)
+            if png_path:
+                self.update_complete.emit(png_path, issues)
+            else:
+                # Still emit issues even if rendering fails
+                self.update_complete.emit("", issues)
+                self.update_failed.emit("Rendering failed, but checks may have run.")
+        except Exception as e:
+            logger.error(
+                f"An exception occurred in SymbolUpdateWorker: {e}", exc_info=True
+            )
+            self.update_failed.emit(str(e))
+        finally:
+            self.finished.emit()
+            logger.info("SymbolUpdateWorker finished.")

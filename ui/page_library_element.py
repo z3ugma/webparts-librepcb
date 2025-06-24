@@ -254,6 +254,7 @@ class LibraryElementPage(QWidget):
             else QPixmap()
         )
         self.page_SymbolReview.set_symbol_image(symbol_pixmap)
+        self.page_SymbolReview.set_library_part(component)
 
         rendered_symbol_pixmap = (
             QPixmap(component.symbol.rendered_png_path)
