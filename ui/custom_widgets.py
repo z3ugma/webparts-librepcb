@@ -49,6 +49,7 @@ class ZoomPanGraphicsView(QGraphicsView):
         self._is_panning = False
         self._last_mouse_position = None
         self._initial_fit_done = False
+        self._is_at_fit_zoom = True  # Track if we're at "fit to view" zoom level
 
     def event(self, event: QEvent) -> bool:
         """
@@ -102,8 +103,10 @@ class ZoomPanGraphicsView(QGraphicsView):
                     # Prevent zooming out beyond the initial fit-in-view size
                     if self.transform().m11() * zoom_factor < fit_scale:
                         self.fitInView(scene_rect, Qt.KeepAspectRatio)
+                        self._is_at_fit_zoom = True
                         return True
                 self.scale(zoom_factor, zoom_factor)
+                self._is_at_fit_zoom = False  # User has zoomed, no longer at fit
             return True
         return False
 
@@ -167,10 +170,13 @@ class ZoomPanGraphicsView(QGraphicsView):
             if zoom_factor < 1:  # Zooming out
                 if self.transform().m11() * zoom_factor < fit_scale:
                     self.fitInView(scene_rect, Qt.KeepAspectRatio)
+                    self._is_at_fit_zoom = True
                 else:
                     self.scale(zoom_factor, zoom_factor)
+                    self._is_at_fit_zoom = False
             else:  # Zooming in
                 self.scale(zoom_factor, zoom_factor)
+                self._is_at_fit_zoom = False
 
             event.accept()
             return
@@ -212,13 +218,18 @@ class ZoomPanGraphicsView(QGraphicsView):
             super().mouseReleaseEvent(event)
 
     def resizeEvent(self, event):
-        """Override resizeEvent to perform the initial fit-in-view."""
+        """Override resizeEvent to maintain fit-in-view if user hasn't zoomed."""
         super().resizeEvent(event)
         if not self._initial_fit_done and self.scene() and self.scene().items():
             self.fitInView(self.scene().itemsBoundingRect(), Qt.KeepAspectRatio)
             self._initial_fit_done = True
+            self._is_at_fit_zoom = True
+        elif self._is_at_fit_zoom and self.scene() and self.scene().items():
+            # User hasn't manually zoomed, so maintain the fit
+            self.fitInView(self.scene().itemsBoundingRect(), Qt.KeepAspectRatio)
 
     def setScene(self, scene: QGraphicsScene):
         """Reset the initial fit flag when the scene changes."""
         self._initial_fit_done = False
+        self._is_at_fit_zoom = True  # New scene starts at fit zoom
         super().setScene(scene)

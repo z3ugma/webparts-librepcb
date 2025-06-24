@@ -31,7 +31,7 @@ class ZoomPanImageAndTextWidget(QWidget):
         self.view.setToolTip(
             "Pan with Left-click and drag or touchpad; zoom with scroll wheel."
         )
-        self.view.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self.view.setAlignment(Qt.AlignCenter)
         self.item = QGraphicsPixmapItem()
         self.scene.addItem(self.item)
         self.stack.addWidget(self.view)
