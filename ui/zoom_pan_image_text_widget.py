@@ -1,14 +1,16 @@
 import logging
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QStackedWidget,
-    QLabel,
-)
-from PySide6.QtGui import QPixmap
+
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import (
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QLabel,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
 from .custom_widgets import ZoomPanGraphicsView
 
 logger = logging.getLogger(__name__)
@@ -26,7 +28,9 @@ class ZoomPanImageAndTextWidget(QWidget):
 
         self.scene = QGraphicsScene()
         self.view = ZoomPanGraphicsView(self.scene, self)
-        self.view.setToolTip("Pan by dragging, zoom with scroll wheel.")
+        self.view.setToolTip(
+            "Pan with Left-click and drag or touchpad; zoom with scroll wheel."
+        )
         self.view.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         self.item = QGraphicsPixmapItem()
         self.scene.addItem(self.item)
