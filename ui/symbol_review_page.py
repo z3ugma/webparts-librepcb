@@ -24,7 +24,7 @@ from models.status import ElementManifest, ValidationSeverity, ValidationMessage
 from models.library_part import LibraryPart
 from library_manager import LibraryManager
 from .library_element_image_widget import LibraryElementImageWidget
-from .ui_workers import SymbolUpdateWorker
+from .ui_workers import ElementUpdateWorker
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,7 @@ class SymbolReviewPage(QWidget):
         self.librepcb_preview = self.ui.findChild(
             LibraryElementImageWidget, "librepcbSymbolView"
         )
-        self.symbol_message_list = self.ui.findChild(
-            QTreeWidget, "symbolMessageList"
-        )
+        self.symbol_message_list = self.ui.findChild(QTreeWidget, "symbolMessageList")
 
         if self.symbol_message_list:
             self.symbol_message_list.setColumnCount(3)
@@ -115,7 +113,9 @@ class SymbolReviewPage(QWidget):
         self.refresh_button.setText("Refreshing...")
 
         self.refresh_thread = QThread(self)
-        self.refresh_worker = SymbolUpdateWorker(self.library_part)
+        self.refresh_worker = ElementUpdateWorker(
+            self.library_part, LibrePCBElement.SYMBOL
+        )
         self.refresh_worker.moveToThread(self.refresh_thread)
         self.refresh_worker.update_complete.connect(self._on_update_complete)
         self.refresh_worker.update_failed.connect(self._on_update_failed)

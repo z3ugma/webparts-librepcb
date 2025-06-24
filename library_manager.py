@@ -17,9 +17,9 @@ from models.status import (
     ValidationSeverity,
 )
 from workers.footprint_converter import generate_footprint
-from workers.footprint_renderer import render_and_check_footprint
+from workers.element_renderer import render_and_check_element
 from workers.symbol_converter import generate_symbol
-from workers.symbol_renderer import render_and_check_symbol
+
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,9 @@ class LibraryManager(QObject):
                 logger.info(
                     "--- Footprint Generation Succeeded, now rendering and checking ---"
                 )
-                _, issues = render_and_check_footprint(library_part)
+                _, issues = render_and_check_element(
+                    library_part, LibrePCBElement.PACKAGE
+                )
                 self._update_element_manifest(
                     LibrePCBElement.PACKAGE, library_part.footprint.uuid, issues
                 )
@@ -115,7 +117,9 @@ class LibraryManager(QObject):
                 logger.info(
                     "--- Symbol Generation Succeeded, now rendering and checking ---"
                 )
-                _, issues = render_and_check_symbol(library_part)
+                _, issues = render_and_check_element(
+                    library_part, LibrePCBElement.SYMBOL
+                )
                 self._update_element_manifest(
                     LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
                 )
@@ -433,8 +437,11 @@ class LibraryManager(QObject):
             logger.info("Successfully persisted reconciled manifest.")
         except IOError as e:
             logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
+        return manifest
 
-    def reconcile_and_save_symbol_manifest(self, part: LibraryPart, issues: list) -> ElementManifest:
+    def reconcile_and_save_symbol_manifest(
+        self, part: LibraryPart, issues: list
+    ) -> ElementManifest:
         """
         Reconciles new issues with the existing symbol manifest and saves it.
         """
@@ -475,7 +482,9 @@ class LibraryManager(QObject):
                 f.write(manifest.model_dump_json(indent=2))
             logger.info("Successfully persisted reconciled symbol manifest.")
         except IOError as e:
-            logger.error(f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True)
+            logger.error(
+                f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True
+            )
         return manifest
 
     def update_symbol_approval_status(
@@ -510,7 +519,9 @@ class LibraryManager(QObject):
                 f"Successfully persisted symbol approval state for message {msg_index} to {is_approved}."
             )
         except IOError as e:
-            logger.error(f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True)
+            logger.error(
+                f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True
+            )
 
         """
         Handles the state change of an approval checkbox.

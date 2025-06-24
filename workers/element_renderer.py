@@ -1,4 +1,4 @@
-# workers/symbol_renderer.py
+# workers/element_renderer.py
 import logging
 import re
 import subprocess
@@ -7,33 +7,49 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from constants import LIBREPCB_CLI_PATH, WebPartsFilename
-from models.elements import LibrePCBElement
 from models.library_part import LibraryPart
+from models.elements import LibrePCBElement
 from svg_utils import render_svg_file_to_png_file
 
 logger = logging.getLogger(__name__)
 
 
-def render_and_check_symbol(
+def render_and_check_element(
     part: LibraryPart,
+    element_type: LibrePCBElement,
 ) -> Tuple[Optional[str], List[Tuple[str, str, int]]]:
     """
-    Runs `librepcb-cli` to both check and export the symbol image.
+    Runs `librepcb-cli` to both check and export an element's image.
     """
-    if not part or not part.symbol or not part.symbol.uuid:
-        logger.error("Invalid LibraryPart provided to symbol renderer.")
+    if not part:
+        logger.error("Invalid LibraryPart provided to renderer.")
         return None, []
 
-    sym_dir = LibrePCBElement.SYMBOL.dir / part.symbol.uuid
-    sym_dir_path = str(sym_dir)
+    element_info = None
+    if element_type == LibrePCBElement.PACKAGE:
+        element_info = part.footprint
+        cli_command = "open-package"
+    elif element_type == LibrePCBElement.SYMBOL:
+        element_info = part.symbol
+        cli_command = "open-symbol"
+    else:
+        logger.error(f"Unsupported element type: {element_type}")
+        return None, []
 
-    svg_output_path = sym_dir / WebPartsFilename.RENDERED_SVG.value
-    png_output_path = sym_dir / WebPartsFilename.RENDERED_PNG.value
+    if not element_info or not element_info.uuid:
+        logger.error(f"Invalid {element_type.value} data in LibraryPart.")
+        return None, []
+
+    element_dir = element_type.dir / element_info.uuid
+    element_dir_path = str(element_dir)
+
+    svg_output_path = element_dir / WebPartsFilename.RENDERED_SVG.value
+    png_output_path = element_dir / WebPartsFilename.RENDERED_PNG.value
 
     command = [
         LIBREPCB_CLI_PATH,
-        "open-symbol",
-        sym_dir_path,
+        cli_command,
+        element_dir_path,
         "--check",
         "--export",
         str(svg_output_path),
@@ -79,7 +95,7 @@ def render_and_check_symbol(
             logger.error("SVG to PNG conversion failed.")
             return None, processed_messages
 
-        logger.info(f"Successfully rendered and checked {sym_dir.name}.")
+        logger.info(f"Successfully rendered and checked {element_dir.name}.")
         return str(png_output_path.resolve()), processed_messages
     except FileNotFoundError:
         logger.error(f"The 'librepcb-cli' not found at '{LIBREPCB_CLI_PATH}'")

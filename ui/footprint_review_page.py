@@ -24,7 +24,7 @@ from models.library_part import LibraryPart
 from models.status import ElementManifest, ValidationSeverity
 
 from .library_element_image_widget import LibraryElementImageWidget
-from .ui_workers import FootprintUpdateWorker
+from .ui_workers import ElementUpdateWorker
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,9 @@ class FootprintReviewPage(QWidget):
         self.refresh_button.setText("Refreshing...")
 
         self.refresh_thread = QThread(self)
-        self.refresh_worker = FootprintUpdateWorker(self.library_part)
+        self.refresh_worker = ElementUpdateWorker(
+            self.library_part, LibrePCBElement.PACKAGE
+        )
         self.refresh_worker.moveToThread(self.refresh_thread)
 
         # Connections
