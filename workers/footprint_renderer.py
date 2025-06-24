@@ -1,63 +1,89 @@
+# workers/footprint_renderer.py
 import logging
+import re
 import subprocess
+from collections import Counter
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-from constants import LIBRARY_DIR, LIBREPCB_CLI_PATH, WebPartsFilename
+from constants import LIBREPCB_CLI_PATH, WebPartsFilename
+from models.library_part import LibraryPart
+from models.elements import LibrePCBElement
 from svg_utils import render_svg_file_to_png_file
 
 logger = logging.getLogger(__name__)
 
 
-def render_footprint_sync(package_dir: Path) -> str:
+def render_and_check_footprint(
+    part: LibraryPart,
+) -> Tuple[Optional[str], List[Tuple[str, str, int]]]:
     """
-    Synchronously renders a footprint to a high-resolution PNG using librepcb-cli and pyvips.
-    Returns the absolute path to the rendered PNG on success, or raises an Exception on failure.
+    Runs `librepcb-cli` to both check and export the footprint image.
     """
-    logger.info(f"--- Starting High-Res Footprint Rendering for {package_dir.name} ---")
+    if not part or not part.footprint or not part.footprint.uuid:
+        logger.error("Invalid LibraryPart provided to renderer.")
+        return None, []
+
+    pkg_dir = LibrePCBElement.PACKAGE.dir / part.footprint.uuid
+    pkg_dir_path = str(pkg_dir)
+
+    svg_output_path = pkg_dir / WebPartsFilename.RENDERED_SVG.value
+    png_output_path = pkg_dir / WebPartsFilename.RENDERED_PNG.value
+
+    command = [
+        LIBREPCB_CLI_PATH,
+        "open-package",
+        pkg_dir_path,
+        "--check",
+        "--export",
+        str(svg_output_path),
+    ]
+
+    logger.info(f"Running command: {' '.join(command)}")
+
     try:
-        package_dir.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
-        svg_output_path = Path(package_dir, WebPartsFilename.RENDERED_SVG.value)
-        png_output_path = Path(package_dir, WebPartsFilename.RENDERED_PNG.value)
+        output = result.stdout + result.stderr
+        logger.debug(f"CLI Output:\n{output}")
 
-        # Step 1: Use librepcb-cli to generate the source SVG.
-        cli_args = [
-            LIBREPCB_CLI_PATH,
-            "open-package",
-            str(package_dir),
-            "--export",
-            str(svg_output_path),
+        if result.returncode != 0 and "Finished with errors!" not in output:
+            logger.error(f"LibrePCB-CLI failed unexpectedly:\n{output}")
+            return None, []
+
+        # --- Parse Messages ---
+        pattern = re.compile(r"-\s*\[(WARNING|HINT|ERROR)\]\s*(.*)")
+        raw_messages = [
+            (msg.strip(), severity) for severity, msg in pattern.findall(output)
         ]
 
-        p = subprocess.Popen(
-            cli_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        stdout, stderr = p.communicate()
-
-        if stdout:
-            logger.info(f"librepcb-cli stdout:\n{stdout}")
-        if stderr:
-            logger.warning(f"librepcb-cli stderr:\n{stderr}")
-
-        if p.returncode != 0:
-            raise RuntimeError(f"librepcb-cli failed with return code {p.returncode}")
+        # --- Deduplicate and Count Messages ---
+        message_counts = Counter(raw_messages)
+        processed_messages = [
+            (msg, sev, count) for (msg, sev), count in message_counts.items()
+        ]
 
         if not svg_output_path.exists():
-            raise FileNotFoundError(f"SVG file was not created at {svg_output_path}")
+            logger.error("CLI command ran, but output SVG was not created.")
+            return None, processed_messages
 
-        logger.info("--- SVG Generation Succeeded ---")
-
-        # Step 2: Convert the generated SVG to a high-resolution PNG using pyvips.
+        # --- Convert SVG to PNG ---
+        logger.info(f"Converting {svg_output_path} to {png_output_path}...")
         render_svg_file_to_png_file(str(svg_output_path), str(png_output_path))
+        if not png_output_path.exists():
+            logger.error("SVG to PNG conversion failed.")
+            return None, processed_messages
 
-        logger.info("--- PNG Conversion Succeeded ---")
-
-        # Return the absolute path to the final PNG for clarity and robustness.
-        return str(png_output_path.resolve())
-
+        logger.info(f"Successfully rendered and checked {pkg_dir.name}.")
+        return str(png_output_path.resolve()), processed_messages
+    except FileNotFoundError:
+        logger.error(f"The 'librepcb-cli' not found at '{LIBREPCB_CLI_PATH}'")
+        return None, []
     except Exception as e:
-        logger.error(f"--- Footprint Rendering Failed ---\n{e}")
-        raise
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+        return None, []

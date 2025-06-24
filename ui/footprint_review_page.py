@@ -1,19 +1,30 @@
+import json
 import logging
 import os
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
     QGraphicsView,
+    QHBoxLayout,
+    QHeaderView,
+    QPushButton,
     QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from .custom_widgets import ZoomPanGraphicsView
-from .library_element_image_widget import LibraryElementImageWidget
+from library_manager import LibraryManager
+from models.elements import LibrePCBElement
+from models.library_part import LibraryPart
+from models.status import ElementManifest, ValidationSeverity
 
+from .library_element_image_widget import LibraryElementImageWidget
+from .ui_workers import FootprintUpdateWorker
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +36,9 @@ class FootprintReviewPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.library_part = None
+        self.manifest = None
+        self.library_manager = LibraryManager()
 
         loader = QUiLoader()
         # Register the custom widget for promotion
@@ -55,14 +69,172 @@ class FootprintReviewPage(QWidget):
         self._setup_easyeda_preview()
 
         # The generated preview is now a custom widget promoted from the UI file
+        self.footprint_message_list = self.ui.findChild(
+            QTreeWidget, "footprintMessageList"
+        )
+        if self.footprint_message_list:
+            self.footprint_message_list.setColumnCount(3)
+            self.footprint_message_list.setHeaderLabels(
+                ["Approved", "Severity", "Message"]
+            )
+            header = self.footprint_message_list.header()
+            header.setSectionResizeMode(2, QHeaderView.Stretch)
+            self.footprint_message_list.setColumnWidth(0, 80)  # Approved
+            self.footprint_message_list.setColumnWidth(1, 60)  # Severity
+            self.footprint_message_list.setHeaderHidden(False)
+        else:
+            logger.error("Could not find 'footprintMessageList' widget.")
+
         self.librepcb_preview = self.ui.findChild(
             LibraryElementImageWidget, "librepcbFootprintView"
         )
         if self.librepcb_preview:
-            # This will be populated by set_library_part
             self.librepcb_preview.show_text("Loading...")
         else:
             logger.error("Could not find 'librepcbFootprintView' widget.")
+
+        self.refresh_button = self.ui.findChild(QPushButton, "button_RefreshFootprint")
+        if self.refresh_button:
+            self.refresh_button.clicked.connect(self._on_refresh_checks_clicked)
+        else:
+            logger.error("Could not find 'button_RefreshFootprint' widget.")
+
+    def _on_refresh_checks_clicked(self):
+        if not self.library_part:
+            logger.warning("Refresh clicked but no library part is set.")
+            return
+
+        self.refresh_button.setEnabled(False)
+        self.refresh_button.setText("Refreshing...")
+
+        self.refresh_thread = QThread(self)
+        self.refresh_worker = FootprintUpdateWorker(self.library_part)
+        self.refresh_worker.moveToThread(self.refresh_thread)
+
+        # Connections
+        self.refresh_worker.update_complete.connect(self._on_update_complete)
+        self.refresh_worker.update_failed.connect(self._on_update_failed)
+        self.refresh_thread.started.connect(self.refresh_worker.run)
+
+        # Cleanup: When the worker is done, it tells the thread to quit.
+        self.refresh_worker.finished.connect(self.refresh_thread.quit)
+        # When the thread is finished, schedule both for deletion.
+        self.refresh_thread.finished.connect(self.refresh_thread.deleteLater)
+        self.refresh_worker.finished.connect(self.refresh_worker.deleteLater)
+
+        self.refresh_thread.start()
+
+    def _on_update_complete(self, png_path: str, issues: list):
+        logger.info("Footprint update complete. Refreshing UI.")
+        if png_path:
+            self.set_librepcb_footprint_image(QPixmap(png_path))
+
+        # Reconcile and update the manifest
+        self.manifest = self.library_manager.reconcile_and_save_footprint_manifest(
+            self.library_part, issues
+        )
+
+        # Reload messages into the UI
+        self._load_validation_messages()
+
+        self.refresh_button.setEnabled(True)
+        self.refresh_button.setText("Refresh Checks")
+
+    def _on_update_failed(self, error_message: str):
+        logger.error(f"Footprint update failed: {error_message}")
+        self.refresh_button.setEnabled(True)
+        self.refresh_button.setText("Refresh Checks")
+
+    def _on_approval_changed(self, state: int, msg_index: int):
+        """
+        Handles the state change of an approval checkbox.
+        """
+        if not self.manifest or not (0 <= msg_index < len(self.manifest.validation)):
+            logger.error(f"Cannot update approval for invalid index {msg_index}")
+            return
+
+        is_checked = state == Qt.CheckState.Checked.value
+        self.library_manager.update_footprint_approval_status(
+            self.library_part, msg_index, is_checked
+        )
+        # Update the in-memory manifest to reflect the change immediately
+        self.manifest.validation[msg_index].is_approved = is_checked
+        logger.info(
+            f"Delegated approval state change for message {msg_index} to {is_checked}."
+        )
+
+    def set_library_part(self, part: LibraryPart):
+        """
+        Sets the library part, loads its manifest, and populates the page.
+        """
+        self.library_part = part
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(
+            self.library_part.footprint.uuid
+        )
+        if manifest_path.exists():
+            try:
+                self.manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+                self.manifest = None
+        else:
+            logger.warning(f"Footprint manifest not found at {manifest_path}")
+            self.manifest = None
+
+        self._load_validation_messages()
+
+    def _load_validation_messages(self):
+        """
+        Populates the tree widget from the in-memory manifest.
+        """
+        if not self.library_part or not self.footprint_message_list:
+            return
+
+        self.footprint_message_list.clear()
+
+        if not self.manifest:
+            logger.warning("Cannot load messages: manifest not loaded.")
+            return
+
+        for index, msg in enumerate(self.manifest.validation):
+            item = QTreeWidgetItem(self.footprint_message_list)
+            item.setData(0, Qt.UserRole, index)  # Store index on first column
+
+            # Column 1: Severity Icon (centered)
+            item.setText(1, self._get_icon_for_severity(msg.severity))
+            item.setTextAlignment(1, Qt.AlignCenter)
+
+            # Column 2: Message Text (left-aligned by default)
+            msg_text = msg.message
+            if msg.count > 1:
+                msg_text += f" ({msg.count} occurrences)"
+            item.setText(2, msg_text)
+
+            # Column 0: Approved Checkbox (centered)
+            checkbox = QCheckBox()
+            checkbox.setChecked(msg.is_approved)
+            checkbox.stateChanged.connect(
+                lambda state, idx=index: self._on_approval_changed(state, idx)
+            )
+
+            # To center the checkbox, we place it inside a container widget with a centered layout
+            container = QWidget()
+            layout = QHBoxLayout(container)
+            layout.addWidget(checkbox)
+            layout.setAlignment(Qt.AlignCenter)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self.footprint_message_list.setItemWidget(item, 0, container)
+
+    def _get_icon_for_severity(self, severity: ValidationSeverity) -> str:
+        if severity == ValidationSeverity.WARNING:
+            return "⚠️"
+        if severity == ValidationSeverity.HINT:
+            return "💡"
+        if severity == ValidationSeverity.ERROR:
+            return "❌"
+        return ""
 
     def _setup_easyeda_preview(self):
         """Configures the left-side image viewer for the EasyEDA footprint."""

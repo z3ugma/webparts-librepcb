@@ -237,6 +237,7 @@ class LibraryElementPage(QWidget):
             else QPixmap()
         )
         self.page_FootprintReview.set_footprint_image(footprint_pixmap)
+        self.page_FootprintReview.set_library_part(component)
 
         rendered_footprint_pixmap = (
             QPixmap(component.footprint.rendered_png_path)

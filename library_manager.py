@@ -2,19 +2,24 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject
 
 from constants import WEBPARTS_DIR, WebPartsFilename
 from models.elements import LibrePCBElement
 from models.library_part import LibraryPart
 from models.search_result import SearchResult
-from models.status import StatusValue
+from models.status import (
+    ElementManifest,
+    StatusValue,
+    ValidationMessage,
+    ValidationSeverity,
+)
 from workers.footprint_converter import generate_footprint
-from workers.footprint_renderer import render_footprint_sync
+from workers.footprint_renderer import render_and_check_footprint
+from workers.symbol_checker import check_symbol
 from workers.symbol_converter import generate_symbol
-from workers.symbol_renderer import render_symbol_sync as render_symbol_sync_alias
 
 logger = logging.getLogger(__name__)
 
@@ -95,27 +100,38 @@ class LibraryManager(QObject):
 
             logger.info("--- Starting Footprint Generation ---")
             if generate_footprint(search_result.raw_cad_data, str(part_pkg_dir)):
-                logger.info("--- Footprint Generation Succeeded ---")
-                try:
-                    render_footprint_sync(part_pkg_dir)
-                except Exception as e:
-                    logger.error(f"--- Footprint Rendering Failed ---\n{e}")
+                logger.info(
+                    "--- Footprint Generation Succeeded, now rendering and checking ---"
+                )
+                _, issues = render_and_check_footprint(str(part_pkg_dir))
+                self._update_element_manifest(
+                    LibrePCBElement.PACKAGE, library_part.footprint.uuid, issues
+                )
             else:
                 logger.error("--- Footprint Generation Failed ---")
 
             logger.info("--- Starting Symbol Generation ---")
             if generate_symbol(search_result.raw_cad_data, str(part_sym_dir)):
-                logger.info("--- Symbol Generation Succeeded ---")
-                try:
-                    render_symbol_sync_alias(part_sym_dir)
-                except Exception as e:
-                    logger.error(f"--- Symbol Rendering Failed ---\n{e}")
+                logger.info(
+                    "--- Symbol Generation Succeeded, now rendering and checking ---"
+                )
+                # Note: We will create render_and_check_symbol in the next step
+                # _, issues = render_and_check_symbol(str(part_sym_dir))
+                issues = check_symbol(str(part_sym_dir))
+
+                self._update_element_manifest(
+                    LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
+                )
             else:
                 logger.error("--- Symbol Generation Failed ---")
 
-            logger.info("Creating manifests...")
-            self._create_manifests(library_part, part_pkg_dir)
-            logger.info("  OK.")
+            # Create the main part manifest
+            part_manifest_path = (
+                WEBPARTS_DIR / library_part.uuid / WebPartsFilename.PART_MANIFEST.value
+            )
+            with open(part_manifest_path, "w") as f:
+                f.write(library_part.model_dump_json(indent=2))
+            logger.info("Created main part manifest.")
 
             logger.info("Hydrating final asset paths...")
             self._hydrate_asset_paths(library_part)
@@ -314,22 +330,146 @@ class LibraryManager(QObject):
             return str(dest_path.resolve())
         return src_path_str
 
-    def _create_manifests(self, library_part: LibraryPart, pkg_dir: Path):
-        """Creates the central part.wp and element manifests."""
-        manifest_dir = WEBPARTS_DIR / library_part.uuid
-        manifest_path = manifest_dir / WebPartsFilename.PART_MANIFEST.value
+    def _update_element_manifest(
+        self, element: LibrePCBElement, uuid: str, issues: List[Tuple[str, str, int]]
+    ):
+        """
+        Runs checks for an element and updates its .wp manifest file with
+        reconciled validation messages.
+        """
+        manifest_path = element.get_wp_path(uuid)
+
+        # Step 1: Read existing manifest
+        existing_messages = {}
+        if manifest_path.exists():
+            try:
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+                for msg in manifest.validation:
+                    existing_messages[(msg.message, msg.severity)] = msg
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Could not parse existing manifest {manifest_path}: {e}"
+                )
+
+        # Step 2: Reconcile messages
+        reconciled_messages = []
+        for msg_text, severity_str, count in issues:
+            key = (msg_text, ValidationSeverity(severity_str))
+
+            # Create the new message object based on the latest results
+            new_msg = ValidationMessage(
+                message=msg_text,
+                severity=key[1],
+                count=count,
+            )
+
+            # If the same message existed before, check if we should preserve approval
+            if key in existing_messages:
+                old_msg = existing_messages[key]
+                # CRUCIAL: Preserve approval ONLY if the count has NOT changed.
+                if old_msg.is_approved and old_msg.count == new_msg.count:
+                    new_msg.is_approved = True
+
+            reconciled_messages.append(new_msg)
+
+        # Step 3: Write updated manifest
+        current_status = self._get_element_status(element, uuid)
+        new_manifest = ElementManifest(
+            validation=reconciled_messages, status=current_status
+        )
         with open(manifest_path, "w") as f:
-            f.write(library_part.model_dump_json(indent=2))
+            f.write(new_manifest.model_dump_json(indent=2))
+        logger.info(
+            f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {current_status.value}."
+        )
 
-        def create_element_manifest(element: LibrePCBElement, uuid: str):
-            manifest_path = element.get_wp_path(uuid)
-            manifest_data = {
-                "version": 1,
-                "status": StatusValue.NEEDS_REVIEW.value,
-                "validation": {"errors": [], "warnings": []},
-            }
+    def reconcile_and_save_footprint_manifest(
+        self, part: LibraryPart, issues: list
+    ) -> ElementManifest:
+        """
+        Reconciles new issues with the existing manifest and saves it.
+        Approval is invalidated if the message count changes.
+        """
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
+        try:
+            if manifest_path.exists():
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            else:
+                manifest = ElementManifest()
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+            manifest = ElementManifest()
+
+        existing_messages = {
+            (msg.message, msg.severity): msg for msg in manifest.validation
+        }
+        reconciled_messages = []
+
+        for msg_text, severity_str, count in issues:
+            key = (msg_text, ValidationSeverity(severity_str))
+
+            # Create the new message object based on the latest results
+            new_msg = ValidationMessage(
+                message=msg_text,
+                severity=key[1],
+                count=count,
+            )
+
+            # If the same message existed before, check if we should preserve approval
+            if key in existing_messages:
+                old_msg = existing_messages[key]
+                # CRUCIAL: Preserve approval ONLY if the count has NOT changed.
+                if old_msg.is_approved and old_msg.count == new_msg.count:
+                    new_msg.is_approved = True
+
+            reconciled_messages.append(new_msg)
+
+        manifest.validation = reconciled_messages
+
+        try:
             with open(manifest_path, "w") as f:
-                json.dump(manifest_data, f, indent=2)
+                f.write(manifest.model_dump_json(indent=2))
+            logger.info("Successfully persisted reconciled manifest.")
+        except IOError as e:
+            logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
+        return manifest
 
-        create_element_manifest(LibrePCBElement.PACKAGE, library_part.footprint.uuid)
-        create_element_manifest(LibrePCBElement.SYMBOL, library_part.symbol.uuid)
+    def update_footprint_approval_status(
+        self, part: LibraryPart, msg_index: int, is_approved: bool
+    ) -> None:
+        """
+        Handles the state change of an approval checkbox.
+        """
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
+        try:
+            if manifest_path.exists():
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            else:
+                logger.error(f"Manifest not found at {manifest_path}")
+                return
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+            return
+
+        if not (0 <= msg_index < len(manifest.validation)):
+            logger.error(f"Cannot update approval for invalid index {msg_index}")
+            return
+
+        # Update the in-memory manifest
+        manifest.validation[msg_index].is_approved = is_approved
+
+        # Write the entire, updated manifest back to disk
+        try:
+            with open(manifest_path, "w") as f:
+                f.write(manifest.model_dump_json(indent=2))
+            logger.info(
+                f"Successfully persisted approval state for message {msg_index} to {is_approved}."
+            )
+        except IOError as e:
+            logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
