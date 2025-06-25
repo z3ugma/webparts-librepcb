@@ -206,6 +206,12 @@ class LibraryManager(QObject):
                 part.symbol.svg_path = str(symbol_svg_path.resolve())
             if rendered_png_path.exists():
                 part.symbol.rendered_png_path = str(rendered_png_path.resolve())
+            
+            # Hydrate symbol name from the symbol.lp file
+            symbol_name = LibrePCBElement.SYMBOL.get_element_name(part.symbol.uuid)
+            if symbol_name:
+                part.symbol.name = symbol_name
+                logger.debug(f"Hydrated symbol name: {symbol_name}")
 
         # Footprint images
         if part.footprint and part.footprint.uuid:

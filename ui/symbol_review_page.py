@@ -2,10 +2,12 @@
 import json
 import logging
 import os
+import subprocess
+import sys
 from typing import List, Tuple
 
-from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QWidget,
@@ -17,6 +19,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QHeaderView,
     QPushButton,
+    QLabel,
 )
 
 from models.elements import LibrePCBElement
@@ -82,8 +85,64 @@ class SymbolReviewPage(QWidget):
         else:
             logger.error("Could not find 'button_RefreshSymbol' widget.")
 
+        # Find header and UUID labels
+        self.header_label = self.ui.findChild(QLabel, "label_SymbolHeader")
+        self.uuid_label = self.ui.findChild(QLabel, "label_SymbolUUID")
+        if self.uuid_label:
+            self.uuid_label.linkActivated.connect(self._on_uuid_clicked)
+        else:
+            logger.error("Could not find 'label_SymbolUUID' widget.")
+
+    def _on_uuid_clicked(self, link: str):
+        """Opens the symbol folder in Finder when UUID link is clicked."""
+        logger.info(f"UUID link clicked: {link}")
+        if not self.library_part or not self.library_part.symbol:
+            logger.warning("No library part or symbol set")
+            return
+            
+        sym_dir_absolute = LibrePCBElement.SYMBOL.get_element_dir_absolute(
+            self.library_part.symbol.uuid
+        )
+        
+        if not sym_dir_absolute:
+            logger.error(f"Symbol directory not found for UUID: {self.library_part.symbol.uuid}")
+            return
+        
+        logger.info(f"Opening symbol directory: {sym_dir_absolute}")
+        
+        # Use Qt's cross-platform method with absolute path
+        url = QUrl.fromLocalFile(str(sym_dir_absolute))
+        success = QDesktopServices.openUrl(url)
+        
+        if not success:
+            logger.warning("QDesktopServices failed, trying platform-specific method")
+            # Fall back to platform-specific method
+            try:
+                if sys.platform == "darwin":  # macOS
+                    subprocess.run(["open", str(sym_dir_absolute)], check=True)
+                elif sys.platform == "win32":  # Windows
+                    subprocess.run(["explorer", str(sym_dir_absolute)], check=True)
+                else:  # Linux and others
+                    subprocess.run(["xdg-open", str(sym_dir_absolute)], check=True)
+                logger.info(f"Successfully opened folder using platform-specific method")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to open folder: {e}")
+        else:
+            logger.info(f"Successfully opened folder using QDesktopServices")
+
     def set_library_part(self, part: LibraryPart):
         self.library_part = part
+        
+        # Update header with symbol name (hydrated from symbol.lp file)
+        if self.header_label and part.symbol:
+            symbol_name = part.symbol.name or "Unknown Symbol"
+            self.header_label.setText(f"<h1>{symbol_name}</h1>")
+        
+        # Update UUID label with clickable link
+        if self.uuid_label and part.symbol:
+            uuid_str = str(part.symbol.uuid)
+            self.uuid_label.setText(f'<a href="#">{uuid_str}</a>')
+        
         manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
         if manifest_path.exists():
             try:

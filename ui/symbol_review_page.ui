@@ -15,11 +15,34 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_Symbol" stretch="0,2,0,1">
    <item>
-    <widget class="QLabel" name="label_SymbolHeader">
-     <property name="text">
-      <string>&lt;h1&gt;Symbol Review&lt;/h1&gt;</string>
+    <layout class="QVBoxLayout" name="headerLayout">
+     <property name="spacing">
+      <number>2</number>
      </property>
-    </widget>
+     <item>
+      <widget class="QLabel" name="label_SymbolHeader">
+       <property name="text">
+        <string>&lt;h1&gt;Symbol Review&lt;/h1&gt;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_SymbolUUID">
+       <property name="text">
+        <string>&lt;a href="#"&gt;UUID&lt;/a&gt;</string>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::RichText</enum>
+       </property>
+       <property name="openExternalLinks">
+        <bool>false</bool>
+       </property>
+       <property name="textInteractionFlags">
+        <set>Qt::LinksAccessibleByMouse</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QSplitter" name="vertical_splitter">

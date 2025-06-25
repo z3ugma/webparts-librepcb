@@ -14,6 +14,7 @@ class ImageInfo(BaseModel):
 
 class SymbolInfo(BaseModel):
     uuid: Optional[str] = None
+    name: Optional[str] = None
     png_path: Optional[str] = None
     svg_path: Optional[str] = None
     rendered_png_path: Optional[str] = None
