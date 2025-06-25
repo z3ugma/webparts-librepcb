@@ -27,11 +27,34 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLabel" name="label_FootprintHeader">
-     <property name="text">
-      <string>&lt;h1&gt;Footprint Review&lt;/h1&gt;</string>
+    <layout class="QVBoxLayout" name="headerLayout">
+     <property name="spacing">
+      <number>2</number>
      </property>
-    </widget>
+     <item>
+      <widget class="QLabel" name="label_FootprintHeader">
+       <property name="text">
+        <string>&lt;h1&gt;Footprint Review&lt;/h1&gt;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_FootprintUUID">
+       <property name="text">
+        <string>&lt;a href="#"&gt;UUID&lt;/a&gt;</string>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::RichText</enum>
+       </property>
+       <property name="openExternalLinks">
+        <bool>false</bool>
+       </property>
+       <property name="textInteractionFlags">
+        <set>Qt::LinksAccessibleByMouse</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QSplitter" name="vertical_splitter">

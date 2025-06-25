@@ -1,15 +1,18 @@
 import json
 import logging
 import os
+import subprocess
+import sys
 
-from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QCheckBox,
     QGraphicsView,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QPushButton,
     QSplitter,
     QTreeWidget,
@@ -99,6 +102,51 @@ class FootprintReviewPage(QWidget):
         else:
             logger.error("Could not find 'button_RefreshFootprint' widget.")
 
+        # Find header and UUID labels
+        self.header_label = self.ui.findChild(QLabel, "label_FootprintHeader")
+        self.uuid_label = self.ui.findChild(QLabel, "label_FootprintUUID")
+        if self.uuid_label:
+            self.uuid_label.linkActivated.connect(self._on_uuid_clicked)
+        else:
+            logger.error("Could not find 'label_FootprintUUID' widget.")
+
+    def _on_uuid_clicked(self, link: str):
+        """Opens the package folder in Finder when UUID link is clicked."""
+        logger.info(f"UUID link clicked: {link}")
+        if not self.library_part or not self.library_part.footprint:
+            logger.warning("No library part or footprint set")
+            return
+            
+        pkg_dir_absolute = LibrePCBElement.PACKAGE.get_element_dir_absolute(
+            self.library_part.footprint.uuid
+        )
+        
+        if not pkg_dir_absolute:
+            logger.error(f"Package directory not found for UUID: {self.library_part.footprint.uuid}")
+            return
+        
+        logger.info(f"Opening package directory: {pkg_dir_absolute}")
+        
+        # Use Qt's cross-platform method with absolute path
+        url = QUrl.fromLocalFile(str(pkg_dir_absolute))
+        success = QDesktopServices.openUrl(url)
+        
+        if not success:
+            logger.warning("QDesktopServices failed, trying platform-specific method")
+            # Fall back to platform-specific method
+            try:
+                if sys.platform == "darwin":  # macOS
+                    subprocess.run(["open", str(pkg_dir_absolute)], check=True)
+                elif sys.platform == "win32":  # Windows
+                    subprocess.run(["explorer", str(pkg_dir_absolute)], check=True)
+                else:  # Linux and others
+                    subprocess.run(["xdg-open", str(pkg_dir_absolute)], check=True)
+                logger.info(f"Successfully opened folder using platform-specific method")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to open folder: {e}")
+        else:
+            logger.info(f"Successfully opened folder using QDesktopServices")
+
     def _on_refresh_checks_clicked(self):
         if not self.library_part:
             logger.warning("Refresh clicked but no library part is set.")
@@ -170,6 +218,17 @@ class FootprintReviewPage(QWidget):
         Sets the library part, loads its manifest, and populates the page.
         """
         self.library_part = part
+        
+        # Update header with footprint name (hydrated from package.lp file)
+        if self.header_label and part.footprint:
+            footprint_name = part.footprint.name or "Unknown Footprint"
+            self.header_label.setText(f"<h1>{footprint_name}</h1>")
+        
+        # Update UUID label with clickable link
+        if self.uuid_label and part.footprint:
+            uuid_str = str(part.footprint.uuid)
+            self.uuid_label.setText(f'<a href="#">{uuid_str}</a>')
+        
         manifest_path = LibrePCBElement.PACKAGE.get_wp_path(
             self.library_part.footprint.uuid
         )

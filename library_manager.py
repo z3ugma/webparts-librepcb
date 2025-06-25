@@ -219,6 +219,12 @@ class LibraryManager(QObject):
                 part.footprint.svg_path = str(footprint_svg_path.resolve())
             if rendered_png_path.exists():
                 part.footprint.rendered_png_path = str(rendered_png_path.resolve())
+            
+            # Hydrate footprint name from the package.lp file
+            footprint_name = LibrePCBElement.PACKAGE.get_element_name(part.footprint.uuid)
+            if footprint_name:
+                part.footprint.name = footprint_name
+                logger.debug(f"Hydrated footprint name: {footprint_name}")
 
     def _get_element_status(
         self, element: LibrePCBElement, element_uuid: str
@@ -486,6 +492,39 @@ class LibraryManager(QObject):
                 f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True
             )
         return manifest
+
+    def update_footprint_approval_status(
+        self, part: LibraryPart, msg_index: int, is_approved: bool
+    ) -> None:
+        """
+        Handles the state change of an approval checkbox for a footprint.
+        """
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
+        try:
+            if manifest_path.exists():
+                manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+            else:
+                logger.error(f"Manifest not found at {manifest_path}")
+                return
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+            return
+
+        if not (0 <= msg_index < len(manifest.validation)):
+            logger.error(f"Cannot update approval for invalid index {msg_index}")
+            return
+
+        manifest.validation[msg_index].is_approved = is_approved
+
+        try:
+            manifest_path.write_text(manifest.model_dump_json(indent=2))
+            logger.info(
+                f"Updated approval for message {msg_index} to {'Approved' if is_approved else 'Not Approved'}."
+            )
+        except Exception as e:
+            logger.error(f"Error writing footprint manifest {manifest_path}: {e}")
 
     def update_symbol_approval_status(
         self, part: LibraryPart, msg_index: int, is_approved: bool

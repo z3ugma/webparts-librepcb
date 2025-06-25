@@ -21,6 +21,7 @@ class SymbolInfo(BaseModel):
 
 class FootprintInfo(BaseModel):
     uuid: Optional[str] = None
+    name: Optional[str] = None
     package_type: Optional[str] = None
     png_path: Optional[str] = None
     svg_path: Optional[str] = None

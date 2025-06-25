@@ -4,6 +4,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID, uuid4
+import re
 
 from pydantic import BaseModel, Field
 from constants import LIBRARY_DIR
@@ -32,6 +33,36 @@ class LibrePCBElement(Enum):
     def get_wp_path(self, uuid: str) -> Path:
         """Get the path to the WebParts manifest file (.wp)."""
         return self.dir / uuid / f"{uuid}.{self.webparts_name}.wp"
+
+    def get_element_name(self, uuid: str) -> Optional[str]:
+        """Extract the element name from the .lp file."""
+        lp_path = self.get_lp_path(uuid)
+        if not lp_path.exists():
+            return None
+        
+        try:
+            with open(lp_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Look for (name "...") pattern in the S-expression
+                match = re.search(r'\(name\s+"([^"]+)"\)', content)
+                if match:
+                    return match.group(1)
+        except Exception:
+            # Silently fail - logging should be done at the caller level
+            pass
+        
+        return None
+
+    def get_element_dir_absolute(self, uuid: str) -> Optional[Path]:
+        """Get the absolute path to an element's directory if it exists."""
+        if not uuid:
+            return None
+        
+        element_dir = self.dir / uuid
+        if element_dir.exists():
+            return element_dir.resolve()
+        
+        return None
 
 
 class BaseElement(BaseModel):
