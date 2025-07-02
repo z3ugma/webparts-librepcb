@@ -77,7 +77,8 @@ class AddToLibraryDialog(QDialog):
 
         # --- Connections ---
         self._worker.log_message.connect(self.log_view.appendPlainText)
-        self._worker.finished.connect(self._on_finished)
+        self._worker.add_part_succeeded.connect(self._on_add_part_succeeded)
+        self._worker.add_part_failed.connect(self._on_add_part_failed)
         self._thread.started.connect(self._worker.run)
         self._thread.finished.connect(self._worker.deleteLater)
         self.finished.connect(self._thread.quit)  # Clean up thread when dialog closes
@@ -85,12 +86,16 @@ class AddToLibraryDialog(QDialog):
         self._thread.start()
 
     @Slot(object)
-    def _on_finished(self, library_part):
+    def _on_add_part_succeeded(self, library_part):
         self.library_part = library_part
-        if library_part:
-            logger.info("\n✅ Success!")
-        else:
-            logger.error("\n❌ Failed.")
+        self.log_view.appendPlainText("\n✅ Success!")
+        self.ok_button.setEnabled(True)
+        self._thread.quit()
+
+    @Slot(str)
+    def _on_add_part_failed(self, error_message):
+        self.library_part = None
+        self.log_view.appendPlainText(f"\n❌ Failed: {error_message}")
         self.ok_button.setEnabled(True)
         self._thread.quit()
 
@@ -106,16 +111,6 @@ class AddToLibraryDialog(QDialog):
     def _on_copy_to_clipboard(self):
         QApplication.clipboard().setText(self.log_view.toPlainText())
         logger.info("Log content copied to clipboard.")
-
-    @Slot(object)
-    def _on_finished(self, library_part):
-        self.library_part = library_part
-        if library_part:
-            logger.info("\n✅ Success!")
-        else:
-            logger.error("\n❌ Failed.")
-        self.ok_button.setEnabled(True)
-        self._thread.quit()
 
     def done(self, result):
         if self._thread and self._thread.isRunning():

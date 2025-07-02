@@ -379,3 +379,30 @@ class LibrePCBFootprintSerializer:
         print(
             f"Footprint '{footprint.name}' serialized to LibrePCB package: {filepath}"
         )
+
+
+def footprint_alignment_to_librepcb_settings(
+    alignment, enabled: bool = True, rotation: float = 0.0
+) -> str:
+    """
+    Generate LibrePCB background image settings format from FootprintAlignment.
+
+    Args:
+        alignment: FootprintAlignment object with reference points
+        enabled: Whether the background image is enabled
+        rotation: Rotation angle in degrees
+
+    Returns:
+        S-expression string for LibrePCB settings
+    """
+    if len(alignment.reference_points) < 2:
+        raise ValueError("At least 2 reference points are required for alignment")
+
+    ref1, ref2 = alignment.reference_points[0], alignment.reference_points[1]
+
+    return f"""(librepcb_background_image
+ (enabled {"true" if enabled else "false"})
+ (rotation {rotation:.1f})
+ (reference (source {ref1.source_x:.6f} {ref1.source_y:.6f}) (target {ref1.target_x:.3f} {ref1.target_y:.3f}))
+ (reference (source {ref2.source_x:.6f} {ref2.source_y:.6f}) (target {ref2.target_x:.3f} {ref2.target_y:.3f}))
+)"""

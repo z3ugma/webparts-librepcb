@@ -88,7 +88,9 @@ class ImageWorker(QObject):
     @Slot(object, str, str)
     def load_image(self, vendor, image_url, image_type):
         try:
-            image_data, cache_path = self._api_service.download_image(vendor, image_url)
+            image_data, cache_path = self._api_service.download_image_from_url(
+                vendor, image_url
+            )
             self.image_loaded.emit(image_data, image_type, cache_path)
         except Exception as e:
             self.image_failed.emit(str(e), image_type)
@@ -122,7 +124,8 @@ class AddPartWorker(QObject):
     A QObject worker for adding a library part in a separate thread.
     """
 
-    finished = Signal(object)
+    add_part_succeeded = Signal(LibraryPart)
+    add_part_failed = Signal(str)
     log_message = Signal(str)
 
     def __init__(self, search_result: SearchResult):
@@ -137,21 +140,27 @@ class AddPartWorker(QObject):
         """
         # Set up a log handler that emits signals
         handler = self.SignalLogHandler(self.log_message)
-        # The root logger will now propagate messages to our handler
         logging.getLogger().addHandler(handler)
 
         logger.info(f"Worker started for part {self._search_result.lcsc_id}")
-        library_part = None
         try:
+            # Note: The manager's method might need to be adjusted to not
+            # return the part, as it will be emitted via signal.
             library_part = self._manager.add_part_from_search_result(
                 self._search_result
             )
+            if library_part:
+                self.add_part_succeeded.emit(library_part)
+            else:
+                # This handles cases where the manager returns None without an exception
+                self.add_part_failed.emit("Add part operation returned no result.")
+
         except Exception as e:
             logger.error(
                 f"An exception occurred in the worker thread: {e}", exc_info=True
             )
+            self.add_part_failed.emit(str(e))
         finally:
-            self.finished.emit(library_part)
             logging.getLogger().removeHandler(handler)
             logger.info("Worker finished.")
 

@@ -6,6 +6,12 @@ LIBRARY_DIR = Path("./WebParts.lplib")
 WEBPARTS_DIR = LIBRARY_DIR / "webparts"
 CACHE_DIR = Path("image_cache")
 
+# --- LibrePCB Backgrounds Directory ---
+# Per-workstation directory where LibrePCB looks for background images
+BACKGROUNDS_DIR = (
+    Path.home() / "Library" / "Caches" / "LibrePCB" / "LibrePCB" / "backgrounds"
+)
+
 
 # --- WebParts Internal Filenames ---
 class WebPartsFilename(Enum):

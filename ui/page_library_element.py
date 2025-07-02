@@ -212,7 +212,11 @@ class LibraryElementPage(QWidget):
         if self.part_info_widget:
             self.part_info_widget.set_component(component)
 
-        if hasattr(component, "image_url"):
+        # The `component` passed here is a LibraryPart. If it's a new part being
+        # added, `image_url` might exist from the SearchResult, so we download it.
+        # If it's an existing part loaded from the library, we use the property
+        # to get the local path.
+        if hasattr(component, "image_url") and component.image_url:
             self._set_hero_text(UIText.LOADING.value)
             try:
                 vendor_enum = Vendor(component.vendor)
@@ -220,47 +224,53 @@ class LibraryElementPage(QWidget):
             except ValueError:
                 self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
         else:
-            hero_path = (
-                LibrePCBElement.PACKAGE.dir.parent
-                / "webparts"
-                / component.uuid
-                / WebPartsFilename.HERO_IMAGE.value
-            )
-            if hero_path.exists():
+            hero_path = component.hero_image_path
+            if hero_path and hero_path.exists():
                 self._set_hero_pixmap(QPixmap(str(hero_path)))
             else:
                 self._set_hero_text(UIText.IMAGE_NOT_AVAILABLE.value)
 
-        footprint_pixmap = (
-            QPixmap(component.footprint.png_path)
-            if hasattr(component, "footprint") and component.footprint.png_path
-            else QPixmap()
-        )
+        # Use new properties to get paths
+        if hasattr(component, "footprint") and component.footprint:
+            fp_path = component.footprint.png_path
+            rend_fp_path = component.footprint.rendered_png_path
+
+            footprint_pixmap = (
+                QPixmap(str(fp_path)) if fp_path and fp_path.exists() else QPixmap()
+            )
+            rendered_footprint_pixmap = (
+                QPixmap(str(rend_fp_path))
+                if rend_fp_path and rend_fp_path.exists()
+                else QPixmap()
+            )
+        else:
+            footprint_pixmap = QPixmap()
+            rendered_footprint_pixmap = QPixmap()
+
         self.page_FootprintReview.set_footprint_image(footprint_pixmap)
         self.page_FootprintReview.set_library_part(component)
-
-        rendered_footprint_pixmap = (
-            QPixmap(component.footprint.rendered_png_path)
-            if hasattr(component, "footprint") and component.footprint.rendered_png_path
-            else QPixmap()
-        )
         self.page_FootprintReview.set_librepcb_footprint_image(
             rendered_footprint_pixmap
         )
 
-        symbol_pixmap = (
-            QPixmap(component.symbol.png_path)
-            if hasattr(component, "symbol") and component.symbol.png_path
-            else QPixmap()
-        )
+        if hasattr(component, "symbol") and component.symbol:
+            sym_path = component.symbol.png_path
+            rend_sym_path = component.symbol.rendered_png_path
+
+            symbol_pixmap = (
+                QPixmap(str(sym_path)) if sym_path and sym_path.exists() else QPixmap()
+            )
+            rendered_symbol_pixmap = (
+                QPixmap(str(rend_sym_path))
+                if rend_sym_path and rend_sym_path.exists()
+                else QPixmap()
+            )
+        else:
+            symbol_pixmap = QPixmap()
+            rendered_symbol_pixmap = QPixmap()
+
         self.page_SymbolReview.set_symbol_image(symbol_pixmap)
         self.page_SymbolReview.set_library_part(component)
-
-        rendered_symbol_pixmap = (
-            QPixmap(component.symbol.rendered_png_path)
-            if hasattr(component, "symbol") and component.symbol.rendered_png_path
-            else QPixmap()
-        )
         self.page_SymbolReview.set_librepcb_symbol_image(rendered_symbol_pixmap)
 
         self._update_workflow_status(component.status)

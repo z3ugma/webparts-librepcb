@@ -4,6 +4,7 @@ to the user's local library.
 """
 
 from typing import Optional, Dict
+from pathlib import Path
 from pydantic import BaseModel, Field
 from .common_info import ImageInfo, SymbolInfo, FootprintInfo, ComponentInfo, DeviceInfo
 from .status import Status
@@ -44,3 +45,50 @@ class LibraryPart(BaseModel):
 
     # --- Hydrated Fields ---
     has_3d_model: bool = Field(False)
+
+    @property
+    def hero_image_path(self) -> Optional[Path]:
+        """
+        Dynamically constructs the path to the hero image for this part.
+        """
+        from constants import WEBPARTS_DIR, WebPartsFilename
+        from pathlib import Path
+
+        if not self.uuid:
+            return None
+        return WEBPARTS_DIR / self.uuid / WebPartsFilename.HERO_IMAGE.value
+
+    @property
+    def manifest_path(self) -> Optional[Path]:
+        """
+        Dynamically constructs the path to the main part manifest file.
+        """
+        from constants import WEBPARTS_DIR, WebPartsFilename
+        from pathlib import Path
+
+        if not self.uuid:
+            return None
+        return WEBPARTS_DIR / self.uuid / WebPartsFilename.PART_MANIFEST.value
+
+    @property
+    def dir_path(self) -> Optional[Path]:
+        """
+        Dynamically constructs the path to the main part directory.
+        """
+        from constants import WEBPARTS_DIR
+        from pathlib import Path
+
+        if not self.uuid:
+            return None
+        return WEBPARTS_DIR / self.uuid
+
+    def create_library_dirs(self):
+        """
+        Creates all necessary directories for this library part.
+        """
+        if self.dir_path:
+            self.dir_path.mkdir(parents=True, exist_ok=True)
+        if self.footprint and self.footprint.dir_path:
+            self.footprint.dir_path.mkdir(parents=True, exist_ok=True)
+        if self.symbol and self.symbol.dir_path:
+            self.symbol.dir_path.mkdir(parents=True, exist_ok=True)

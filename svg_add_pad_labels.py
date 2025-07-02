@@ -3,14 +3,9 @@ import argparse
 import logging
 import xml.etree.ElementTree as ET
 
+from svg_utils import load_svg_tree, SVG_NAMESPACE
+
 logger = logging.getLogger(__name__)
-
-# Define the SVG namespace
-SVG_NAMESPACE = "http://www.w3.org/2000/svg"
-
-# Register the default SVG namespace to avoid 'ns0:' prefixes in the output
-# This makes the output SVG cleaner.
-ET.register_namespace("", SVG_NAMESPACE)
 
 
 def add_pad_numbers_to_svg_file(input_svg_path):
@@ -19,39 +14,16 @@ def add_pad_numbers_to_svg_file(input_svg_path):
     elements, and saves the modified SVG to a new file.
     """
     try:
-        tree = ET.parse(input_svg_path)
-        root = tree.getroot()
+        tree, root = load_svg_tree(input_svg_path)
     except FileNotFoundError:
         logger.error(f"Error: Input SVG file not found at '{input_svg_path}'")
         return
     except ET.ParseError as e:
         logger.error(f"Error parsing SVG file '{input_svg_path}': {e}")
         return
-
-    # Ensure the root element is an <svg> tag in the SVG namespace
-    if root.tag != ET.QName(SVG_NAMESPACE, "svg"):
-        logger.error(f"Error: The root element in '{input_svg_path}' is not <svg>.")
-        # Attempt to find an svg tag if it's wrapped, e.g. in an XML document
-        # This is a basic check; a more robust solution might be needed for complex non-SVG XML wrappers.
-        svg_element_found = root.find(f".//{{{SVG_NAMESPACE}}}svg")
-        if svg_element_found is not None:
-            logger.warning(
-                "Warning: Found an <svg> element deeper in the XML structure. "
-                "The script will attempt to process this, but the output will be the entire modified input XML."
-            )
-            # For simplicity, we'll modify in place. If only the SVG part needs to be extracted and saved,
-            # the logic would need to change to create a new tree with just the modified SVG element.
-            root = svg_element_found  # Re-assign root to the found SVG element for processing
-        # This means we are now operating within that SVG sub-tree.
-        # When saving, 'tree.write' will still write the original tree structure
-        # with modifications inside this sub-tree.
-        # If the goal is a *new* SVG file containing *only* the modified <svg>
-        # and its children, then a new ET.ElementTree(modified_svg_element)
-        # would need to be created before writing.
-        # For now, we modify the original tree.
-        else:
-            logger.error("No <svg> element found. Cannot process.")
-            return
+    except ValueError as e:
+        logger.error(str(e))
+        return
 
     # Find or create the group for pad numbers
     pad_numbers_group_id = "pcbPadNumbers"

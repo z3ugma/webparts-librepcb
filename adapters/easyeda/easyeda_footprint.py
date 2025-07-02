@@ -758,8 +758,14 @@ class EasyEDAParser:
         if "Supplier Part" in c_para:
             custom_attrs["LCSC Part"] = c_para["Supplier Part"]
 
-        offset_x = head.get("x", 0.0) * self.unit_scale
-        offset_y = head.get("y", 0.0) * self.unit_scale
+        offset_x_easyeda_units = head.get("x", 0.0)  # Keep original EasyEDA units
+        offset_y_easyeda_units = head.get("y", 0.0)  # Keep original EasyEDA units
+        offset_x = (
+            offset_x_easyeda_units * self.unit_scale
+        )  # Convert to mm for pad positioning
+        offset_y = (
+            offset_y_easyeda_units * self.unit_scale
+        )  # Convert to mm for pad positioning
         print(f"Offset: {offset_x}, {offset_y}")
 
         fp = Footprint(
@@ -775,6 +781,8 @@ class EasyEDAParser:
             graphics=[],
             height=height,
             width=width,
+            source_offset_x=offset_x_easyeda_units,  # Store original source units
+            source_offset_y=offset_y_easyeda_units,  # Store original source units
         )
 
         # --- Shapes ---
@@ -819,3 +827,51 @@ class EasyEDAParser:
                     raise Exception(f"Unhandled element type: {type(element)}")
 
         return fp
+
+    def calculate_footprint_alignment(
+        self, footprint: Footprint, svg_path: str, png_path: str
+    ):
+        """
+        Calculate alignment for a footprint using data stored in the footprint object.
+
+        Args:
+            footprint: The parsed Footprint object (with source_offset_x/y)
+            svg_path: Path to SVG file (for viewBox)
+            png_path: Path to PNG file (for pixel dimensions)
+
+        Returns:
+            FootprintAlignment object
+        """
+        from models.footprint import AlignmentCalculator
+        from svg_utils import (
+            parse_svg_viewbox,
+            get_png_dimensions,
+            create_coordinate_mapper,
+        )
+
+        if footprint.source_offset_x is None or footprint.source_offset_y is None:
+            raise ValueError(
+                "Footprint missing source offset data - was it parsed correctly?"
+            )
+
+        # Get SVG and PNG information using shared utilities
+        svg_info = parse_svg_viewbox(svg_path)
+        png_info = get_png_dimensions(png_path)
+
+        # Create coordinate mapper using shared utility
+        coordinate_mapper = create_coordinate_mapper(
+            svg_info=svg_info,
+            png_info=png_info,
+            source_offset_x=footprint.source_offset_x,
+            source_offset_y=footprint.source_offset_y,
+            unit_scale=self.unit_scale,
+        )
+
+        # Use the generic alignment calculator
+        calculator = AlignmentCalculator()
+        alignment = calculator.calculate_alignment(
+            footprint=footprint,
+            coordinate_mapper=coordinate_mapper,
+        )
+
+        return alignment

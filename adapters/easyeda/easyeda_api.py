@@ -203,6 +203,19 @@ class EasyEDAApi(SearchEngine):
             search_result.footprint_png_cache_path = footprint_png_path
             search_result.footprint_svg_cache_path = footprint_svg_path
 
+        # Hydrate the hero image
+        if search_result.image and search_result.image.url:
+            try:
+                # The method is on the base class
+                _, cache_path = self.download_image_from_url(
+                    Vendor.LCSC, search_result.image.url
+                )
+                search_result.hero_image_cache_path = cache_path
+            except Exception as e:
+                logger.error(
+                    f"Failed to download hero image for {search_result.lcsc_id}: {e}"
+                )
+
         try:
             raw_symbol_uuid = cad_data.get("dataStr", {}).get("head", {}).get("uuid")
             raw_package_uuid = (

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 from constants import WEBPARTS_DIR, WebPartsFilename
 from models.elements import LibrePCBElement
@@ -16,9 +16,6 @@ from models.status import (
     ValidationMessage,
     ValidationSeverity,
 )
-from workers.footprint_converter import generate_footprint
-from workers.element_renderer import render_and_check_element
-from workers.symbol_converter import generate_symbol
 
 
 logger = logging.getLogger(__name__)
@@ -60,33 +57,44 @@ class LibraryManager(QObject):
         """Checks if a part manifest already exists in the library."""
         if not part_uuid:
             return False
-        manifest_path = WEBPARTS_DIR / part_uuid / WebPartsFilename.PART_MANIFEST.value
+        # Use a temporary part object to get the manifest path
+        temp_part = LibraryPart(
+            uuid=part_uuid,
+            vendor="",
+            part_name="",
+            lcsc_id="",
+            manufacturer="",
+            mfr_part_number="",
+            description="",
+            full_description="",
+        )
+        manifest_path = temp_part.manifest_path
         return manifest_path.exists()
 
     def add_part_from_search_result(self, search_result: SearchResult):
         """
-        Converts a SearchResult, saves it, and emits a finished signal.
+        Adds a new part to the library based on a search result.
         """
         try:
+            from workers.footprint_converter import process_footprint_complete
+            from workers.symbol_converter import generate_symbol
+            from workers.element_renderer import render_and_check_element
+
             logger.info(f"Starting import of '{search_result.lcsc_id}'...")
             library_part = self._map_search_result_to_library_part(search_result)
-            logger.info(f"  Mapped to Library Part UUID: {library_part.uuid}")
 
-            part_pkg_dir = LibrePCBElement.PACKAGE.dir / library_part.footprint.uuid
+            # --- Create Directories ---
+            library_part.create_library_dirs()
+            logger.info(f"Created library directories for part {library_part.uuid}")
 
-            logger.info("Creating library directories...")
-            (WEBPARTS_DIR / library_part.uuid).mkdir(parents=True, exist_ok=True)
-            part_pkg_dir.mkdir(parents=True, exist_ok=True)
-            part_sym_dir = LibrePCBElement.SYMBOL.dir / library_part.symbol.uuid
-            part_sym_dir.mkdir(parents=True, exist_ok=True)
-            logger.info("  OK.")
+            # Get directory paths from properties for later use
+            part_pkg_dir = library_part.footprint.dir_path
+            part_sym_dir = library_part.symbol.dir_path
+            part_dir = library_part.dir_path
 
-            logger.info("Copying assets...")
+            # --- Save Source Data and Assets ---
             self._copy_assets_and_get_new_paths(
-                search_result,
-                part_pkg_dir,
-                part_sym_dir,
-                (WEBPARTS_DIR / library_part.uuid),
+                search_result, part_pkg_dir, part_sym_dir, part_dir
             )
             logger.info("  OK.")
 
@@ -98,20 +106,12 @@ class LibraryManager(QObject):
             self._save_symbol_source_json(search_result, part_sym_dir)
             logger.info("  OK.")
 
-            logger.info("--- Starting Footprint Generation ---")
-            if generate_footprint(search_result.raw_cad_data, str(part_pkg_dir)):
-                logger.info(
-                    "--- Footprint Generation Succeeded, now rendering and checking ---"
-                )
-                _, issues = render_and_check_element(
-                    library_part, LibrePCBElement.PACKAGE
-                )
-                self._update_element_manifest(
-                    LibrePCBElement.PACKAGE, library_part.footprint.uuid, issues
-                )
-            else:
-                logger.error("--- Footprint Generation Failed ---")
+            # --- Process Footprint (Generate, Render, Check, Align) ---
+            process_footprint_complete(
+                search_result.raw_cad_data, library_part, part_pkg_dir
+            )
 
+            # --- Process Symbol (Generate, Render, Check) ---
             logger.info("--- Starting Symbol Generation ---")
             if generate_symbol(search_result.raw_cad_data, str(part_sym_dir)):
                 logger.info(
@@ -126,23 +126,18 @@ class LibraryManager(QObject):
             else:
                 logger.error("--- Symbol Generation Failed ---")
 
-            # Create the main part manifest
-            part_manifest_path = (
-                WEBPARTS_DIR / library_part.uuid / WebPartsFilename.PART_MANIFEST.value
-            )
+            # --- Finalize: Create Part Manifest ---
+            part_manifest_path = library_part.manifest_path
             with open(part_manifest_path, "w") as f:
                 f.write(library_part.model_dump_json(indent=2))
-            logger.info("Created main part manifest.")
 
-            logger.info("Hydrating final asset paths...")
-            self._hydrate_asset_paths(library_part)
-            logger.info("  OK.")
-
-            logger.info("\nImport complete.")
+            logger.info(f"✅ Successfully added '{library_part.part_name}' to library.")
             return library_part
+
         except Exception as e:
-            logger.error(f"\n[ERROR] An exception occurred: {e}", exc_info=True)
-            return None
+            logger.error(f"❌ Failed to add part to library: {e}", exc_info=True)
+            # Re-raise the exception to be caught by the worker
+            raise e
 
     def get_all_parts(self) -> list[LibraryPart]:
         """Scans the library and returns a list of all parts."""
@@ -152,7 +147,19 @@ class LibraryManager(QObject):
 
         for part_dir in WEBPARTS_DIR.iterdir():
             if part_dir.is_dir():
-                manifest_path = part_dir / WebPartsFilename.PART_MANIFEST.value
+                # Construct the expected manifest path to check for existence
+                # We need a dummy part to get the path structure
+                temp_part = LibraryPart(
+                    uuid=part_dir.name,
+                    vendor="",
+                    part_name="",
+                    lcsc_id="",
+                    manufacturer="",
+                    mfr_part_number="",
+                    description="",
+                    full_description="",
+                )
+                manifest_path = temp_part.manifest_path
                 if manifest_path.exists():
                     try:
                         with open(manifest_path, "r") as f:
@@ -160,7 +167,6 @@ class LibraryManager(QObject):
                             part = LibraryPart.model_validate(part_data)
 
                             # Status is determined ONLY from individual element manifests
-                            # to maintain single source of truth
                             part.status.footprint = self._get_element_status(
                                 LibrePCBElement.PACKAGE, part.footprint.uuid
                             )
@@ -174,8 +180,8 @@ class LibraryManager(QObject):
                                 LibrePCBElement.DEVICE, part.uuid
                             )
 
-                            # Hydrate asset paths
-                            self._hydrate_asset_paths(part)
+                            # Hydrate remaining metadata and paths
+                            self._hydrate_part_info(part)
 
                             parts.append(part)
                     except (json.JSONDecodeError, TypeError) as e:
@@ -185,52 +191,29 @@ class LibraryManager(QObject):
 
         return parts
 
-    def _hydrate_asset_paths(self, part: LibraryPart):
+    def _hydrate_part_info(self, part: LibraryPart):
         """
-        Dynamically constructs and adds absolute paths for a part's assets.
+        Dynamically constructs and adds asset paths and names for a part.
+        This is for parts being loaded from the library, not during creation.
         """
         # Hero image
         hero_image_path = WEBPARTS_DIR / part.uuid / WebPartsFilename.HERO_IMAGE.value
         if hero_image_path.exists():
             part.image.url = str(hero_image_path.resolve())
 
-        # Symbol images
+        # Symbol info
         if part.symbol and part.symbol.uuid:
-            sym_dir = LibrePCBElement.SYMBOL.dir / part.symbol.uuid
-            symbol_png_path = sym_dir / WebPartsFilename.SYMBOL_PNG.value
-            symbol_svg_path = sym_dir / WebPartsFilename.SYMBOL_SVG.value
-            rendered_png_path = sym_dir / WebPartsFilename.RENDERED_PNG.value
-            if symbol_png_path.exists():
-                part.symbol.png_path = str(symbol_png_path.resolve())
-            if symbol_svg_path.exists():
-                part.symbol.svg_path = str(symbol_svg_path.resolve())
-            if rendered_png_path.exists():
-                part.symbol.rendered_png_path = str(rendered_png_path.resolve())
-            
-            # Hydrate symbol name from the symbol.lp file
             symbol_name = LibrePCBElement.SYMBOL.get_element_name(part.symbol.uuid)
             if symbol_name:
                 part.symbol.name = symbol_name
-                logger.debug(f"Hydrated symbol name: {symbol_name}")
 
-        # Footprint images
+        # Footprint info
         if part.footprint and part.footprint.uuid:
-            pkg_dir = LibrePCBElement.PACKAGE.dir / part.footprint.uuid
-            footprint_png_path = pkg_dir / WebPartsFilename.FOOTPRINT_PNG.value
-            footprint_svg_path = pkg_dir / WebPartsFilename.FOOTPRINT_SVG.value
-            rendered_png_path = pkg_dir / WebPartsFilename.RENDERED_PNG.value
-            if footprint_png_path.exists():
-                part.footprint.png_path = str(footprint_png_path.resolve())
-            if footprint_svg_path.exists():
-                part.footprint.svg_path = str(footprint_svg_path.resolve())
-            if rendered_png_path.exists():
-                part.footprint.rendered_png_path = str(rendered_png_path.resolve())
-            
-            # Hydrate footprint name from the package.lp file
-            footprint_name = LibrePCBElement.PACKAGE.get_element_name(part.footprint.uuid)
+            footprint_name = LibrePCBElement.PACKAGE.get_element_name(
+                part.footprint.uuid
+            )
             if footprint_name:
                 part.footprint.name = footprint_name
-                logger.debug(f"Hydrated footprint name: {footprint_name}")
 
     def _get_element_status(
         self, element: LibrePCBElement, element_uuid: str
@@ -285,7 +268,7 @@ class LibraryManager(QObject):
         new_paths = {}
         # Footprint assets
         if search_result.footprint_png_cache_path:
-            new_paths["footprint_png_cache_path"] = self._copy_asset(
+            self._copy_asset(
                 search_result.footprint_png_cache_path,
                 pkg_dir,
                 WebPartsFilename.FOOTPRINT_PNG.value,
@@ -298,7 +281,7 @@ class LibraryManager(QObject):
             )
         # Symbol assets
         if search_result.symbol_png_cache_path:
-            new_paths["symbol_png_cache_path"] = self._copy_asset(
+            self._copy_asset(
                 search_result.symbol_png_cache_path,
                 sym_dir,
                 WebPartsFilename.SYMBOL_PNG.value,
@@ -311,7 +294,7 @@ class LibraryManager(QObject):
             )
         # Other assets
         if search_result.hero_image_cache_path:
-            new_paths["hero_image_cache_path"] = self._copy_asset(
+            self._copy_asset(
                 search_result.hero_image_cache_path,
                 webparts_dir,
                 WebPartsFilename.HERO_IMAGE.value,
@@ -387,15 +370,25 @@ class LibraryManager(QObject):
 
             reconciled_messages.append(new_msg)
 
-        # Step 3: Write updated manifest
-        current_status = self._get_element_status(element, uuid)
+        # Step 3: Determine status - preserve existing human review status or set default
+        existing_status = StatusValue.NEEDS_REVIEW  # Default for new elements
+        if manifest_path.exists():
+            try:
+                existing_manifest = ElementManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
+                existing_status = existing_manifest.status
+            except (json.JSONDecodeError, ValueError):
+                pass  # Use default if can't read existing
+
+        # Step 4: Write updated manifest (preserve human review status)
         new_manifest = ElementManifest(
-            validation=reconciled_messages, status=current_status
+            validation=reconciled_messages, status=existing_status
         )
         with open(manifest_path, "w") as f:
             f.write(new_manifest.model_dump_json(indent=2))
         logger.info(
-            f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {current_status.value}."
+            f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {existing_status.value}."
         )
 
     def reconcile_and_save_footprint_manifest(
