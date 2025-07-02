@@ -116,21 +116,23 @@ class FootprintReviewPage(QWidget):
         if not self.library_part or not self.library_part.footprint:
             logger.warning("No library part or footprint set")
             return
-            
+
         pkg_dir_absolute = LibrePCBElement.PACKAGE.get_element_dir_absolute(
             self.library_part.footprint.uuid
         )
-        
+
         if not pkg_dir_absolute:
-            logger.error(f"Package directory not found for UUID: {self.library_part.footprint.uuid}")
+            logger.error(
+                f"Package directory not found for UUID: {self.library_part.footprint.uuid}"
+            )
             return
-        
+
         logger.info(f"Opening package directory: {pkg_dir_absolute}")
-        
+
         # Use Qt's cross-platform method with absolute path
         url = QUrl.fromLocalFile(str(pkg_dir_absolute))
         success = QDesktopServices.openUrl(url)
-        
+
         if not success:
             logger.warning("QDesktopServices failed, trying platform-specific method")
             # Fall back to platform-specific method
@@ -141,7 +143,9 @@ class FootprintReviewPage(QWidget):
                     subprocess.run(["explorer", str(pkg_dir_absolute)], check=True)
                 else:  # Linux and others
                     subprocess.run(["xdg-open", str(pkg_dir_absolute)], check=True)
-                logger.info(f"Successfully opened folder using platform-specific method")
+                logger.info(
+                    f"Successfully opened folder using platform-specific method"
+                )
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to open folder: {e}")
         else:
@@ -218,17 +222,17 @@ class FootprintReviewPage(QWidget):
         Sets the library part, loads its manifest, and populates the page.
         """
         self.library_part = part
-        
+
         # Update header with footprint name (hydrated from package.lp file)
         if self.header_label and part.footprint:
             footprint_name = part.footprint.name or "Unknown Footprint"
             self.header_label.setText(f"<h1>{footprint_name}</h1>")
-        
+
         # Update UUID label with clickable link
         if self.uuid_label and part.footprint:
             uuid_str = str(part.footprint.uuid)
             self.uuid_label.setText(f'<a href="#">{uuid_str}</a>')
-        
+
         manifest_path = LibrePCBElement.PACKAGE.get_wp_path(
             self.library_part.footprint.uuid
         )

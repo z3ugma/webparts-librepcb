@@ -39,9 +39,9 @@ class LibrePCBElement(Enum):
         lp_path = self.get_lp_path(uuid)
         if not lp_path.exists():
             return None
-        
+
         try:
-            with open(lp_path, 'r', encoding='utf-8') as f:
+            with open(lp_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 # Look for (name "...") pattern in the S-expression
                 match = re.search(r'\(name\s+"([^"]+)"\)', content)
@@ -50,18 +50,18 @@ class LibrePCBElement(Enum):
         except Exception:
             # Silently fail - logging should be done at the caller level
             pass
-        
+
         return None
 
     def get_element_dir_absolute(self, uuid: str) -> Optional[Path]:
         """Get the absolute path to an element's directory if it exists."""
         if not uuid:
             return None
-        
+
         element_dir = self.dir / uuid
         if element_dir.exists():
             return element_dir.resolve()
-        
+
         return None
 
 

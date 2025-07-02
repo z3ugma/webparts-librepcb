@@ -99,21 +99,23 @@ class SymbolReviewPage(QWidget):
         if not self.library_part or not self.library_part.symbol:
             logger.warning("No library part or symbol set")
             return
-            
+
         sym_dir_absolute = LibrePCBElement.SYMBOL.get_element_dir_absolute(
             self.library_part.symbol.uuid
         )
-        
+
         if not sym_dir_absolute:
-            logger.error(f"Symbol directory not found for UUID: {self.library_part.symbol.uuid}")
+            logger.error(
+                f"Symbol directory not found for UUID: {self.library_part.symbol.uuid}"
+            )
             return
-        
+
         logger.info(f"Opening symbol directory: {sym_dir_absolute}")
-        
+
         # Use Qt's cross-platform method with absolute path
         url = QUrl.fromLocalFile(str(sym_dir_absolute))
         success = QDesktopServices.openUrl(url)
-        
+
         if not success:
             logger.warning("QDesktopServices failed, trying platform-specific method")
             # Fall back to platform-specific method
@@ -124,7 +126,9 @@ class SymbolReviewPage(QWidget):
                     subprocess.run(["explorer", str(sym_dir_absolute)], check=True)
                 else:  # Linux and others
                     subprocess.run(["xdg-open", str(sym_dir_absolute)], check=True)
-                logger.info(f"Successfully opened folder using platform-specific method")
+                logger.info(
+                    f"Successfully opened folder using platform-specific method"
+                )
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to open folder: {e}")
         else:
@@ -132,17 +136,17 @@ class SymbolReviewPage(QWidget):
 
     def set_library_part(self, part: LibraryPart):
         self.library_part = part
-        
+
         # Update header with symbol name (hydrated from symbol.lp file)
         if self.header_label and part.symbol:
             symbol_name = part.symbol.name or "Unknown Symbol"
             self.header_label.setText(f"<h1>{symbol_name}</h1>")
-        
+
         # Update UUID label with clickable link
         if self.uuid_label and part.symbol:
             uuid_str = str(part.symbol.uuid)
             self.uuid_label.setText(f'<a href="#">{uuid_str}</a>')
-        
+
         manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
         if manifest_path.exists():
             try:
