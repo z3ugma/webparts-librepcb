@@ -150,7 +150,7 @@
             <item>
              <widget class="QPushButton" name="button_ApproveFootprint">
               <property name="text">
-               <string>Approve &amp; Continue</string>
+                <string>Approve</string>
               </property>
              </widget>
             </item>
@@ -158,13 +158,6 @@
              <widget class="Line" name="line_3">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="button_EditFootprint">
-              <property name="text">
-               <string>Edit in LibrePCB...</string>
               </property>
              </widget>
             </item>

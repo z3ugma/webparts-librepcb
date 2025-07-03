@@ -46,13 +46,20 @@ class ValidationSeverity(str, Enum):
     HINT = "HINT"
 
 
+class ValidationSource(str, Enum):
+    """The source of a validation message."""
+
+    LIBREPCB = "librepcb"
+    WEBPARTS = "webparts"
+
+
 class ValidationMessage(BaseModel):
     """Represents a single validation message from the checker."""
 
     message: str
     severity: ValidationSeverity
-    count: int = 1
     is_approved: bool = False
+    source: ValidationSource = ValidationSource.WEBPARTS
 
 
 class ElementManifest(BaseModel):

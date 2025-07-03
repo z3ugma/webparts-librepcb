@@ -25,6 +25,7 @@ from models.status import StatusValue
 from models.elements import LibrePCBElement
 from adapters.search_engine import Vendor
 from search import Search
+from library_manager import LibraryManager
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
 from .part_info_widget import PartInfoWidget
@@ -61,6 +62,7 @@ class LibraryElementPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.library_manager = LibraryManager()
 
         loader = QUiLoader()
         loader.registerCustomWidget(ClickableLabel)
@@ -141,6 +143,24 @@ class LibraryElementPage(QWidget):
         )
         self._setup_hero_image()
 
+    def _on_element_status_changed(self):
+        """
+        Slot to be called when a child review page signals a status change.
+        """
+        if not self.component:
+            return
+        # Re-fetch the part to get the very latest status from disk
+        updated_part = self.library_manager.get_part_by_uuid(self.component.uuid)
+        if updated_part:
+            self.component = updated_part
+            self._update_workflow_status(self.component.status)
+            logger.info(
+                "Refreshed workflow status. New footprint status: "
+                f"{self.component.status.footprint.name}"
+            )
+        else:
+            logger.warning("Could not find part to refresh status.")
+
     def _setup_hero_image(self):
         self.hero_pixmap_item = QGraphicsPixmapItem()
         self.hero_scene.addItem(self.hero_pixmap_item)
@@ -206,6 +226,18 @@ class LibraryElementPage(QWidget):
             if label:
                 label.clicked.connect(partial(self.go_to_step, i))
         logger.debug("Connected clickable step labels.")
+
+        if self.page_FootprintReview:
+            self.page_FootprintReview.status_changed.connect(
+                self._on_element_status_changed
+            )
+            logger.debug("Connected footprint status change signal.")
+
+        if self.page_SymbolReview:
+            self.page_SymbolReview.status_changed.connect(
+                self._on_element_status_changed
+            )
+            logger.debug("Connected symbol status change signal.")
 
     def set_component(self, component):
         self.component = component

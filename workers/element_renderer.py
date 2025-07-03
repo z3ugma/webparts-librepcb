@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 from constants import LIBREPCB_CLI_PATH, WebPartsFilename
 from models.library_part import LibraryPart
 from models.elements import LibrePCBElement
+from models.status import ValidationMessage, ValidationSeverity, ValidationSource
 from svg_utils import render_svg_file_to_png_file
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 def render_and_check_element(
     part: LibraryPart,
     element_type: LibrePCBElement,
-) -> Tuple[Optional[str], List[Tuple[str, str, int]]]:
+) -> Tuple[Optional[str], List[ValidationMessage]]:
     """
     Runs `librepcb-cli` to both check and export an element's image.
     """
@@ -74,29 +75,28 @@ def render_and_check_element(
 
         # --- Parse Messages ---
         pattern = re.compile(r"-\s*\[(WARNING|HINT|ERROR)\]\s*(.*)")
-        raw_messages = [
-            (msg.strip(), severity) for severity, msg in pattern.findall(output)
-        ]
-
-        # --- Deduplicate and Count Messages ---
-        message_counts = Counter(raw_messages)
-        processed_messages = [
-            (msg, sev, count) for (msg, sev), count in message_counts.items()
+        messages = [
+            ValidationMessage(
+                message=msg.strip(),
+                severity=ValidationSeverity(severity),
+                source=ValidationSource.LIBREPCB,
+            )
+            for severity, msg in pattern.findall(output)
         ]
 
         if not svg_output_path.exists():
             logger.error("CLI command ran, but output SVG was not created.")
-            return None, processed_messages
+            return None, messages
 
         # --- Convert SVG to PNG ---
         logger.info(f"Converting {svg_output_path} to {png_output_path}...")
         render_svg_file_to_png_file(str(svg_output_path), str(png_output_path))
         if not png_output_path.exists():
             logger.error("SVG to PNG conversion failed.")
-            return None, processed_messages
+            return None, messages
 
         logger.info(f"Successfully rendered and checked {element_dir.name}.")
-        return str(png_output_path.resolve()), processed_messages
+        return str(png_output_path.resolve()), messages
     except FileNotFoundError:
         logger.error(f"The 'librepcb-cli' not found at '{LIBREPCB_CLI_PATH}'")
         return None, []

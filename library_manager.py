@@ -15,6 +15,7 @@ from models.status import (
     StatusValue,
     ValidationMessage,
     ValidationSeverity,
+    ValidationSource,
 )
 
 
@@ -191,6 +192,19 @@ class LibraryManager(QObject):
 
         return parts
 
+    def get_part_by_uuid(self, uuid: str) -> Optional[LibraryPart]:
+        """Retrieves a single, fully hydrated library part by its UUID."""
+        if not uuid:
+            return None
+
+        # This is inefficient as it iterates all parts, but it's simple.
+        # For a large library, a direct lookup would be better.
+        all_parts = self.get_all_parts()
+        for part in all_parts:
+            if part.uuid == uuid:
+                return part
+        return None
+
     def _hydrate_part_info(self, part: LibraryPart):
         """
         Dynamically constructs and adds asset paths and names for a part.
@@ -245,6 +259,50 @@ class LibraryManager(QObject):
         except (json.JSONDecodeError, IOError, ValueError) as e:
             logger.error(f"Error reading status manifest {wp_path}: {e}")
             return StatusValue.ERROR
+
+    def set_footprint_manifest_status(
+        self, library_part: LibraryPart, new_status: StatusValue
+    ) -> None:
+        """Update the approval status of a footprint and save it to its manifest."""
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(library_part.footprint.uuid)
+        if not manifest_path or not manifest_path.exists():
+            logger.error(
+                f"Manifest for footprint {library_part.footprint.uuid} not found."
+            )
+            return
+
+        try:
+            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
+            manifest.status = new_status
+            manifest_path.write_text(manifest.model_dump_json(indent=2))
+            logger.info(
+                f"Updated footprint {library_part.footprint.uuid} status to {new_status.name}."
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to update manifest for footprint {library_part.footprint.uuid}: {e}"
+            )
+
+    def set_symbol_manifest_status(
+        self, library_part: LibraryPart, new_status: StatusValue
+    ) -> None:
+        """Update the approval status of a symbol and save it to its manifest."""
+        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(library_part.symbol.uuid)
+        if not manifest_path or not manifest_path.exists():
+            logger.error(f"Manifest for symbol {library_part.symbol.uuid} not found.")
+            return
+
+        try:
+            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
+            manifest.status = new_status
+            manifest_path.write_text(manifest.model_dump_json(indent=2))
+            logger.info(
+                f"Updated symbol {library_part.symbol.uuid} status to {new_status.name}."
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to update manifest for symbol {library_part.symbol.uuid}: {e}"
+            )
 
     def _map_search_result_to_library_part(
         self, search_result: SearchResult
@@ -327,7 +385,7 @@ class LibraryManager(QObject):
         return src_path_str
 
     def _update_element_manifest(
-        self, element: LibrePCBElement, uuid: str, issues: List[Tuple[str, str, int]]
+        self, element: LibrePCBElement, uuid: str, new_issues: List[ValidationMessage]
     ):
         """
         Runs checks for an element and updates its .wp manifest file with
@@ -336,161 +394,36 @@ class LibraryManager(QObject):
         manifest_path = element.get_wp_path(uuid)
 
         # Step 1: Read existing manifest
-        existing_messages = {}
-        if manifest_path.exists():
-            try:
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-                for msg in manifest.validation:
-                    existing_messages[(msg.message, msg.severity)] = msg
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(
-                    f"Could not parse existing manifest {manifest_path}: {e}"
-                )
-
-        # Step 2: Reconcile messages
-        reconciled_messages = []
-        for msg_text, severity_str, count in issues:
-            key = (msg_text, ValidationSeverity(severity_str))
-
-            # Create the new message object based on the latest results
-            new_msg = ValidationMessage(
-                message=msg_text,
-                severity=key[1],
-                count=count,
-            )
-
-            # If the same message existed before, check if we should preserve approval
-            if key in existing_messages:
-                old_msg = existing_messages[key]
-                # CRUCIAL: Preserve approval ONLY if the count has NOT changed.
-                if old_msg.is_approved and old_msg.count == new_msg.count:
-                    new_msg.is_approved = True
-
-            reconciled_messages.append(new_msg)
-
-        # Step 3: Determine status - preserve existing human review status or set default
-        existing_status = StatusValue.NEEDS_REVIEW  # Default for new elements
+        existing_manifest = ElementManifest()
         if manifest_path.exists():
             try:
                 existing_manifest = ElementManifest.model_validate_json(
                     manifest_path.read_text()
                 )
-                existing_status = existing_manifest.status
-            except (json.JSONDecodeError, ValueError):
-                pass  # Use default if can't read existing
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Could not parse existing manifest {manifest_path}: {e}"
+                )
 
-        # Step 4: Write updated manifest (preserve human review status)
+        # Step 2: Preserve internal (WebParts) messages
+        preserved_webparts_messages = [
+            msg
+            for msg in existing_manifest.validation
+            if msg.source == ValidationSource.WEBPARTS
+        ]
+
+        # Step 3: Combine preserved internal messages with all new external ones
+        reconciled_messages = preserved_webparts_messages + new_issues
+
+        # Step 4: Write updated manifest, preserving original human-set status
         new_manifest = ElementManifest(
-            validation=reconciled_messages, status=existing_status
+            validation=reconciled_messages, status=existing_manifest.status
         )
         with open(manifest_path, "w") as f:
             f.write(new_manifest.model_dump_json(indent=2))
         logger.info(
-            f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {existing_status.value}."
+            f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {existing_manifest.status.value}."
         )
-
-    def reconcile_and_save_footprint_manifest(
-        self, part: LibraryPart, issues: list
-    ) -> ElementManifest:
-        """
-        Reconciles new issues with the existing manifest and saves it.
-        Approval is invalidated if the message count changes.
-        """
-        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
-        try:
-            if manifest_path.exists():
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-            else:
-                manifest = ElementManifest()
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
-            manifest = ElementManifest()
-
-        existing_messages = {
-            (msg.message, msg.severity): msg for msg in manifest.validation
-        }
-        reconciled_messages = []
-
-        for msg_text, severity_str, count in issues:
-            key = (msg_text, ValidationSeverity(severity_str))
-
-            # Create the new message object based on the latest results
-            new_msg = ValidationMessage(
-                message=msg_text,
-                severity=key[1],
-                count=count,
-            )
-
-            # If the same message existed before, check if we should preserve approval
-            if key in existing_messages:
-                old_msg = existing_messages[key]
-                # CRUCIAL: Preserve approval ONLY if the count has NOT changed.
-                if old_msg.is_approved and old_msg.count == new_msg.count:
-                    new_msg.is_approved = True
-
-            reconciled_messages.append(new_msg)
-
-        manifest.validation = reconciled_messages
-
-        try:
-            with open(manifest_path, "w") as f:
-                f.write(manifest.model_dump_json(indent=2))
-            logger.info("Successfully persisted reconciled manifest.")
-        except IOError as e:
-            logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
-        return manifest
-
-    def reconcile_and_save_symbol_manifest(
-        self, part: LibraryPart, issues: list
-    ) -> ElementManifest:
-        """
-        Reconciles new issues with the existing symbol manifest and saves it.
-        """
-        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
-        try:
-            if manifest_path.exists():
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-            else:
-                manifest = ElementManifest()
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
-            manifest = ElementManifest()
-
-        existing_messages = {
-            (msg.message, msg.severity): msg for msg in manifest.validation
-        }
-        reconciled_messages = []
-
-        for msg_text, severity_str, count in issues:
-            key = (msg_text, ValidationSeverity(severity_str))
-            new_msg = ValidationMessage(
-                message=msg_text,
-                severity=key[1],
-                count=count,
-            )
-            if key in existing_messages:
-                old_msg = existing_messages[key]
-                if old_msg.is_approved and old_msg.count == new_msg.count:
-                    new_msg.is_approved = True
-            reconciled_messages.append(new_msg)
-
-        manifest.validation = reconciled_messages
-
-        try:
-            with open(manifest_path, "w") as f:
-                f.write(manifest.model_dump_json(indent=2))
-            logger.info("Successfully persisted reconciled symbol manifest.")
-        except IOError as e:
-            logger.error(
-                f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True
-            )
-        return manifest
 
     def update_footprint_approval_status(
         self, part: LibraryPart, msg_index: int, is_approved: bool

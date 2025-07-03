@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 from library_manager import LibraryManager
 from models.elements import LibrePCBElement
 from models.library_part import LibraryPart
-from models.status import ElementManifest, ValidationSeverity
+from models.status import (
+    ElementManifest,
+    StatusValue,
+    ValidationSeverity,
+    ValidationSource,
+)
 
 from .library_element_image_widget import LibraryElementImageWidget
 from .ui_workers import ElementUpdateWorker
@@ -36,6 +41,8 @@ class FootprintReviewPage(QWidget):
     """
     A custom widget that encapsulates the footprint review page functionality.
     """
+
+    status_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -85,6 +92,15 @@ class FootprintReviewPage(QWidget):
             self.footprint_message_list.setColumnWidth(0, 80)  # Approved
             self.footprint_message_list.setColumnWidth(1, 60)  # Severity
             self.footprint_message_list.setHeaderHidden(False)
+            self.footprint_message_list.setStyleSheet("""
+                QCheckBox:disabled {
+                    color: #909090;
+                }
+                QCheckBox::indicator:disabled {
+                    background-color: #e0e0e0;
+                 
+                }
+            """)
         else:
             logger.error("Could not find 'footprintMessageList' widget.")
 
@@ -109,6 +125,43 @@ class FootprintReviewPage(QWidget):
             self.uuid_label.linkActivated.connect(self._on_uuid_clicked)
         else:
             logger.error("Could not find 'label_FootprintUUID' widget.")
+
+        self.approve_button = self.ui.findChild(QPushButton, "button_ApproveFootprint")
+        if self.approve_button:
+            self.approve_button.clicked.connect(self._on_approve_clicked)
+        else:
+            logger.error("Could not find 'button_ApproveFootprint' widget.")
+
+    def _on_approve_clicked(self):
+        if not self.library_part or not self.manifest:
+            logger.warning("Approve clicked but no library part or manifest is set.")
+            return
+
+        current_status = self.manifest.status
+        new_status = (
+            StatusValue.NEEDS_REVIEW
+            if current_status == StatusValue.APPROVED
+            else StatusValue.APPROVED
+        )
+
+        self.library_manager.set_footprint_manifest_status(
+            self.library_part, new_status
+        )
+        self.manifest.status = new_status  # Update in-memory manifest
+        self._update_button_state()
+        self.status_changed.emit()
+
+    def _update_button_state(self):
+        if not self.manifest or not self.approve_button:
+            return
+
+        if self.manifest.status == StatusValue.APPROVED:
+            self.approve_button.setText("Reject")
+            # You can also add styling here, e.g., for a "rejection" state
+            self.approve_button.setStyleSheet("background-color: #e6b8b8;")
+        else:
+            self.approve_button.setText("Approve")
+            self.approve_button.setStyleSheet("")  # Reset to default stylesheet
 
     def _on_uuid_clicked(self, link: str):
         """Opens the package folder in Finder when UUID link is clicked."""
@@ -143,13 +196,11 @@ class FootprintReviewPage(QWidget):
                     subprocess.run(["explorer", str(pkg_dir_absolute)], check=True)
                 else:  # Linux and others
                     subprocess.run(["xdg-open", str(pkg_dir_absolute)], check=True)
-                logger.info(
-                    f"Successfully opened folder using platform-specific method"
-                )
+                logger.info("Successfully opened folder using platform-specific method")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to open folder: {e}")
         else:
-            logger.info(f"Successfully opened folder using QDesktopServices")
+            logger.info("Successfully opened folder using QDesktopServices")
 
     def _on_refresh_checks_clicked(self):
         if not self.library_part:
@@ -184,9 +235,17 @@ class FootprintReviewPage(QWidget):
             self.set_librepcb_footprint_image(QPixmap(png_path))
 
         # Reconcile and update the manifest
-        self.manifest = self.library_manager.reconcile_and_save_footprint_manifest(
-            self.library_part, issues
+        self.library_manager._update_element_manifest(
+            LibrePCBElement.PACKAGE, self.library_part.footprint.uuid, issues
         )
+        # We need to re-load the manifest from disk to get the latest changes
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(
+            self.library_part.footprint.uuid
+        )
+        if manifest_path.exists():
+            self.manifest = ElementManifest.model_validate_json(
+                manifest_path.read_text()
+            )
 
         # Reload messages into the UI
         self._load_validation_messages()
@@ -249,6 +308,7 @@ class FootprintReviewPage(QWidget):
             self.manifest = None
 
         self._load_validation_messages()
+        self._update_button_state()
 
     def _load_validation_messages(self):
         """
@@ -272,17 +332,23 @@ class FootprintReviewPage(QWidget):
             item.setTextAlignment(1, Qt.AlignCenter)
 
             # Column 2: Message Text (left-aligned by default)
-            msg_text = msg.message
-            if msg.count > 1:
-                msg_text += f" ({msg.count} occurrences)"
-            item.setText(2, msg_text)
+            item.setText(2, msg.message)
 
             # Column 0: Approved Checkbox (centered)
             checkbox = QCheckBox()
             checkbox.setChecked(msg.is_approved)
-            checkbox.stateChanged.connect(
-                lambda state, idx=index: self._on_approval_changed(state, idx)
-            )
+
+            # Disable checkbox for read-only (LibrePCB) messages
+            is_readonly = msg.source == ValidationSource.LIBREPCB
+            if is_readonly:
+                checkbox.setEnabled(False)
+                item.setToolTip(
+                    2, "This check is from LibrePCB and cannot be approved here."
+                )
+            else:
+                checkbox.stateChanged.connect(
+                    lambda state, idx=index: self._on_approval_changed(state, idx)
+                )
 
             # To center the checkbox, we place it inside a container widget with a centered layout
             container = QWidget()

@@ -6,7 +6,7 @@ import subprocess
 import sys
 from typing import List, Tuple
 
-from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -23,7 +23,13 @@ from PySide6.QtWidgets import (
 )
 
 from models.elements import LibrePCBElement
-from models.status import ElementManifest, ValidationSeverity, ValidationMessage
+from models.status import (
+    ElementManifest,
+    ValidationSeverity,
+    ValidationMessage,
+    StatusValue,
+    ValidationSource,
+)
 from models.library_part import LibraryPart
 from library_manager import LibraryManager
 from .library_element_image_widget import LibraryElementImageWidget
@@ -33,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 
 class SymbolReviewPage(QWidget):
+    status_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.library_part = None
@@ -76,6 +84,17 @@ class SymbolReviewPage(QWidget):
             self.symbol_message_list.setColumnWidth(0, 80)
             self.symbol_message_list.setColumnWidth(1, 60)
             self.symbol_message_list.setHeaderHidden(False)
+            self.symbol_message_list.setStyleSheet(
+                """
+                QCheckBox:disabled {
+                    color: #909090;
+                }
+                QCheckBox::indicator:disabled {
+                    background-color: #e0e0e0;
+                    border: 1px solid #c0c0c0;
+                }
+            """
+            )
         else:
             logger.error("Could not find 'symbolMessageList' widget.")
 
@@ -85,6 +104,12 @@ class SymbolReviewPage(QWidget):
         else:
             logger.error("Could not find 'button_RefreshSymbol' widget.")
 
+        self.approve_button = self.ui.findChild(QPushButton, "button_ApproveSymbol")
+        if self.approve_button:
+            self.approve_button.clicked.connect(self._on_approve_clicked)
+        else:
+            logger.error("Could not find 'button_ApproveSymbol' widget.")
+
         # Find header and UUID labels
         self.header_label = self.ui.findChild(QLabel, "label_SymbolHeader")
         self.uuid_label = self.ui.findChild(QLabel, "label_SymbolUUID")
@@ -92,6 +117,34 @@ class SymbolReviewPage(QWidget):
             self.uuid_label.linkActivated.connect(self._on_uuid_clicked)
         else:
             logger.error("Could not find 'label_SymbolUUID' widget.")
+
+    def _on_approve_clicked(self):
+        if not self.library_part or not self.manifest:
+            logger.warning("Approve clicked but no library part or manifest is set.")
+            return
+
+        current_status = self.manifest.status
+        new_status = (
+            StatusValue.NEEDS_REVIEW
+            if current_status == StatusValue.APPROVED
+            else StatusValue.APPROVED
+        )
+
+        self.library_manager.set_symbol_manifest_status(self.library_part, new_status)
+        self.manifest.status = new_status
+        self._update_button_state()
+        self.status_changed.emit()
+
+    def _update_button_state(self):
+        if not self.manifest or not self.approve_button:
+            return
+
+        if self.manifest.status == StatusValue.APPROVED:
+            self.approve_button.setText("Reject")
+            self.approve_button.setStyleSheet("background-color: #e6b8b8;")
+        else:
+            self.approve_button.setText("Approve")
+            self.approve_button.setStyleSheet("")
 
     def _on_uuid_clicked(self, link: str):
         """Opens the symbol folder in Finder when UUID link is clicked."""
@@ -160,6 +213,7 @@ class SymbolReviewPage(QWidget):
             logger.warning(f"Symbol manifest not found at {manifest_path}")
             self.manifest = None
         self._load_validation_messages()
+        self._update_button_state()
 
     def set_symbol_image(self, pixmap: QPixmap):
         if self.easyeda_preview:
@@ -191,9 +245,17 @@ class SymbolReviewPage(QWidget):
     def _on_update_complete(self, png_path: str, issues: list):
         if png_path:
             self.set_librepcb_symbol_image(QPixmap(png_path))
-        self.manifest = self.library_manager.reconcile_and_save_symbol_manifest(
-            self.library_part, issues
+        self.library_manager._update_element_manifest(
+            LibrePCBElement.SYMBOL, self.library_part.symbol.uuid, issues
         )
+        # We need to re-load the manifest from disk to get the latest changes
+        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(
+            self.library_part.symbol.uuid
+        )
+        if manifest_path.exists():
+            self.manifest = ElementManifest.model_validate_json(
+                manifest_path.read_text()
+            )
         self._load_validation_messages()
         self.refresh_button.setEnabled(True)
         self.refresh_button.setText("Refresh Checks")
@@ -208,6 +270,7 @@ class SymbolReviewPage(QWidget):
             return
         self.symbol_message_list.clear()
         if not self.manifest:
+            logger.warning("Cannot load messages: manifest not loaded.")
             return
 
         for index, msg in enumerate(self.manifest.validation):
@@ -215,16 +278,23 @@ class SymbolReviewPage(QWidget):
             item.setData(0, Qt.UserRole, index)
             item.setText(1, self._get_icon_for_severity(msg.severity))
             item.setTextAlignment(1, Qt.AlignCenter)
-            msg_text = msg.message
-            if msg.count > 1:
-                msg_text += f" ({msg.count} occurrences)"
-            item.setText(2, msg_text)
+            item.setText(2, msg.message)
 
             checkbox = QCheckBox()
             checkbox.setChecked(msg.is_approved)
-            checkbox.stateChanged.connect(
-                lambda state, idx=index: self._on_approval_changed(state, idx)
-            )
+
+            # Disable checkbox for read-only (LibrePCB) messages
+            is_readonly = msg.source == ValidationSource.LIBREPCB
+            if is_readonly:
+                checkbox.setEnabled(False)
+                item.setToolTip(
+                    2, "This check is from LibrePCB and cannot be approved here."
+                )
+            else:
+                checkbox.stateChanged.connect(
+                    lambda state, idx=index: self._on_approval_changed(state, idx)
+                )
+
             container = QWidget()
             layout = QHBoxLayout(container)
             layout.addWidget(checkbox)
