@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+import copy
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -79,6 +80,8 @@ class LibraryManager(QObject):
         try:
             from workers.footprint_converter import process_footprint_complete
             from workers.symbol_converter import generate_symbol
+            from workers.component_converter import process_component_complete
+            from workers.device_converter import process_device_complete
             from workers.element_renderer import render_and_check_element
 
             logger.info(f"Starting import of '{search_result.lcsc_id}'...")
@@ -109,12 +112,14 @@ class LibraryManager(QObject):
 
             # --- Process Footprint (Generate, Render, Check, Align) ---
             process_footprint_complete(
-                search_result.raw_cad_data, library_part, part_pkg_dir
+                copy.deepcopy(search_result.raw_cad_data), library_part, part_pkg_dir
             )
 
             # --- Process Symbol (Generate, Render, Check) ---
             logger.info("--- Starting Symbol Generation ---")
-            if generate_symbol(search_result.raw_cad_data, str(part_sym_dir)):
+            if generate_symbol(
+                copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
+            ):
                 logger.info(
                     "--- Symbol Generation Succeeded, now rendering and checking ---"
                 )
@@ -126,6 +131,18 @@ class LibraryManager(QObject):
                 )
             else:
                 logger.error("--- Symbol Generation Failed ---")
+
+            # --- Process Component (Generate, Render, Check) ---
+            logger.info("--- Starting Component Generation ---")
+            process_component_complete(
+                copy.deepcopy(search_result.raw_cad_data), library_part
+            )
+
+            # --- Process Device (Generate, Render, Check) ---
+            logger.info("--- Starting Device Generation ---")
+            process_device_complete(
+                copy.deepcopy(search_result.raw_cad_data), library_part
+            )
 
             # --- Finalize: Create Part Manifest ---
             part_manifest_path = library_part.manifest_path
@@ -308,11 +325,26 @@ class LibraryManager(QObject):
         self, search_result: SearchResult
     ) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
+        from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
+        import uuid as uuid_module
+
         search_dict = search_result.model_dump()
         if not search_dict.get("uuid"):
             search_dict["uuid"] = (
                 search_result.uuid or f"search-{search_result.lcsc_id}"
             )
+
+        # Generate UUIDs from the main part UUID
+        if search_dict.get("uuid"):
+            main_uuid_str = search_dict["uuid"]
+            # Convert string to UUID object
+            main_uuid = uuid_module.UUID(main_uuid_str)
+            search_dict["component"]["uuid"] = str(
+                create_derived_uuidv4(main_uuid, "component")
+            )
+            # Device UUID is the same as the main part UUID
+            search_dict["device"]["uuid"] = main_uuid_str
+
         return LibraryPart.model_validate(search_dict)
 
     def _copy_assets_and_get_new_paths(

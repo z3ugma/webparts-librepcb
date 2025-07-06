@@ -66,7 +66,7 @@ class Symbol(BaseElement):
     origin: Point = Field(default_factory=lambda: Point(x=0, y=0))
     width: float = 0.0
     height: float = 0.0
-    prefix: str = "U?"
+    prefix: str = ("U",)
     default_value: Optional[str] = None
     package_name: Optional[str] = None
     spice_prefix: Optional[str] = None

@@ -88,6 +88,18 @@ class FootprintInfo(BaseModel):
 class ComponentInfo(BaseModel):
     uuid: Optional[str] = None
 
+    @property
+    def dir_path(self) -> Optional[Path]:
+        if not self.uuid:
+            return None
+        return LibrePCBElement.COMPONENT.dir / self.uuid
+
 
 class DeviceInfo(BaseModel):
     uuid: Optional[str] = None
+
+    @property
+    def dir_path(self) -> Optional[Path]:
+        if not self.uuid:
+            return None
+        return LibrePCBElement.DEVICE.dir / self.uuid

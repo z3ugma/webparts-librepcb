@@ -208,7 +208,7 @@ class EasyEDAApi(SearchEngine):
             try:
                 # The method is on the base class
                 _, cache_path = self.download_image_from_url(
-                    Vendor.LCSC, search_result.image.url
+                    search_result.vendor, search_result.image.url
                 )
                 search_result.hero_image_cache_path = cache_path
             except Exception as e:

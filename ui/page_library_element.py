@@ -28,6 +28,7 @@ from search import Search
 from library_manager import LibraryManager
 from .footprint_review_page import FootprintReviewPage
 from .symbol_review_page import SymbolReviewPage
+from .component_review_page import ComponentReviewPage
 from .part_info_widget import PartInfoWidget
 from .custom_widgets import ClickableLabel, ZoomPanGraphicsView
 from constants import UIText, WebPartsFilename, WORKFLOW_MAPPING
@@ -69,6 +70,7 @@ class LibraryElementPage(QWidget):
         loader.registerCustomWidget(PartInfoWidget)
         loader.registerCustomWidget(FootprintReviewPage)
         loader.registerCustomWidget(SymbolReviewPage)
+        loader.registerCustomWidget(ComponentReviewPage)
         ui_file_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "page_library_element.ui"
         )
@@ -140,6 +142,9 @@ class LibraryElementPage(QWidget):
         )
         self.page_SymbolReview: SymbolReviewPage = self.review_stack.findChild(
             QWidget, "page_SymbolReview"
+        )
+        self.page_ComponentReview: ComponentReviewPage = self.review_stack.findChild(
+            QWidget, "page_ComponentReview"
         )
         self._setup_hero_image()
 
@@ -239,6 +244,12 @@ class LibraryElementPage(QWidget):
             )
             logger.debug("Connected symbol status change signal.")
 
+        if self.page_ComponentReview:
+            self.page_ComponentReview.status_changed.connect(
+                self._on_element_status_changed
+            )
+            logger.debug("Connected component status change signal.")
+
     def set_component(self, component):
         self.component = component
         if self.part_info_widget:
@@ -304,6 +315,10 @@ class LibraryElementPage(QWidget):
         self.page_SymbolReview.set_symbol_image(symbol_pixmap)
         self.page_SymbolReview.set_library_part(component)
         self.page_SymbolReview.set_librepcb_symbol_image(rendered_symbol_pixmap)
+
+        # Set up component review page
+        if self.page_ComponentReview:
+            self.page_ComponentReview.set_library_part(component)
 
         self._update_workflow_status(component.status)
         self.go_to_step(0)

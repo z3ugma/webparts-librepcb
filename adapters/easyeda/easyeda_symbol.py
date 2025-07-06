@@ -333,7 +333,7 @@ class EasyEDASymbolParser:
             "name", easyeda_data.get("title", "Unknown Symbol")
         )
         package_name = custom_attrs.get("package")
-        prefix = custom_attrs.get("pre", "U?")
+        prefix = custom_attrs.get("pre", "U")
         spice_prefix = custom_attrs.get("spicePre")
         model_name = custom_attrs.get("Model", custom_attrs.get("nameAlias"))
 

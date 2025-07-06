@@ -22,6 +22,14 @@ def with_engine(on_fail_return=None):
         def wrapper(self, vendor_or_result, *args, **kwargs):
             if isinstance(vendor_or_result, SearchResult):
                 vendor = vendor_or_result.vendor
+            elif isinstance(vendor_or_result, str):
+                try:
+                    vendor = Vendor(vendor_or_result)
+                except ValueError:
+                    logger.error(f"Invalid vendor string: '{vendor_or_result}'")
+                    return (
+                        on_fail_return() if callable(on_fail_return) else on_fail_return
+                    )
             else:
                 vendor = vendor_or_result
 

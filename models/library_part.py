@@ -92,3 +92,7 @@ class LibraryPart(BaseModel):
             self.footprint.dir_path.mkdir(parents=True, exist_ok=True)
         if self.symbol and self.symbol.dir_path:
             self.symbol.dir_path.mkdir(parents=True, exist_ok=True)
+        if self.component and self.component.dir_path:
+            self.component.dir_path.mkdir(parents=True, exist_ok=True)
+        if self.device and self.device.dir_path:
+            self.device.dir_path.mkdir(parents=True, exist_ok=True)
