@@ -1,11 +1,11 @@
+import copy
 import json
 import logging
 import shutil
-import copy
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject
 
 from constants import WEBPARTS_DIR, WebPartsFilename
 from models.elements import LibrePCBElement
@@ -15,10 +15,8 @@ from models.status import (
     ElementManifest,
     StatusValue,
     ValidationMessage,
-    ValidationSeverity,
     ValidationSource,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +77,6 @@ class LibraryManager(QObject):
         """
         try:
             from workers.footprint_converter import process_footprint_complete
-            from workers.symbol_converter import generate_symbol
-            from workers.component_converter import process_component_complete
-            from workers.device_converter import process_device_complete
-            from workers.element_renderer import render_and_check_element
 
             logger.info(f"Starting import of '{search_result.lcsc_id}'...")
             library_part = self._map_search_result_to_library_part(search_result)
@@ -115,34 +109,34 @@ class LibraryManager(QObject):
                 copy.deepcopy(search_result.raw_cad_data), library_part, part_pkg_dir
             )
 
-            # --- Process Symbol (Generate, Render, Check) ---
-            logger.info("--- Starting Symbol Generation ---")
-            if generate_symbol(
-                copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
-            ):
-                logger.info(
-                    "--- Symbol Generation Succeeded, now rendering and checking ---"
-                )
-                _, issues = render_and_check_element(
-                    library_part, LibrePCBElement.SYMBOL
-                )
-                self._update_element_manifest(
-                    LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
-                )
-            else:
-                logger.error("--- Symbol Generation Failed ---")
+            # # --- Process Symbol (Generate, Render, Check) ---
+            # logger.info("--- Starting Symbol Generation ---")
+            # if generate_symbol(
+            #     copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
+            # ):
+            #     logger.info(
+            #         "--- Symbol Generation Succeeded, now rendering and checking ---"
+            #     )
+            #     _, issues = render_and_check_element(
+            #         library_part, LibrePCBElement.SYMBOL
+            #     )
+            #     self._update_element_manifest(
+            #         LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
+            #     )
+            # else:
+            #     logger.error("--- Symbol Generation Failed ---")
 
-            # --- Process Component (Generate, Render, Check) ---
-            logger.info("--- Starting Component Generation ---")
-            process_component_complete(
-                copy.deepcopy(search_result.raw_cad_data), library_part
-            )
+            # # --- Process Component (Generate, Render, Check) ---
+            # logger.info("--- Starting Component Generation ---")
+            # process_component_complete(
+            #     copy.deepcopy(search_result.raw_cad_data), library_part
+            # )
 
-            # --- Process Device (Generate, Render, Check) ---
-            logger.info("--- Starting Device Generation ---")
-            process_device_complete(
-                copy.deepcopy(search_result.raw_cad_data), library_part
-            )
+            # # --- Process Device (Generate, Render, Check) ---
+            # logger.info("--- Starting Device Generation ---")
+            # process_device_complete(
+            #     copy.deepcopy(search_result.raw_cad_data), library_part
+            # )
 
             # --- Finalize: Create Part Manifest ---
             part_manifest_path = library_part.manifest_path
@@ -325,8 +319,9 @@ class LibraryManager(QObject):
         self, search_result: SearchResult
     ) -> LibraryPart:
         """Performs a one-way mapping from a search result to a library part."""
-        from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
         import uuid as uuid_module
+
+        from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
 
         search_dict = search_result.model_dump()
         if not search_dict.get("uuid"):
@@ -388,6 +383,12 @@ class LibraryManager(QObject):
                 search_result.hero_image_cache_path,
                 webparts_dir,
                 WebPartsFilename.HERO_IMAGE.value,
+            )
+        if search_result.footprint_model_3d_step_cache_path:
+            self._copy_asset(
+                search_result.footprint_model_3d_step_cache_path,
+                pkg_dir,
+                f"{search_result.footprint.model_3d_uuid}.step",
             )
         return new_paths
 

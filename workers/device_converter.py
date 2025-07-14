@@ -1,16 +1,14 @@
 import logging
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
+from adapters.easyeda.easyeda_footprint import EasyEDAFootprintParser
 from adapters.easyeda.easyeda_symbol import EasyEDASymbolParser
-from adapters.easyeda.easyeda_footprint import EasyEDAParser
 from adapters.librepcb.librepcb_device import LibrePCBDeviceSerializer
-from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
-from constants import WebPartsFilename
+from models.elements import LibrePCBElement
+from models.footprint import Footprint
 from models.library_part import LibraryPart
 from models.symbol import Symbol
-from models.footprint import Footprint
-from models.elements import LibrePCBElement
 from workers.element_renderer import render_and_check_element
 
 logger = logging.getLogger(__name__)
@@ -94,7 +92,7 @@ def _parse_symbol_and_footprint_from_cad_data(
             return False, None, None
 
         logger.info("Parsing EasyEDA footprint data for device generation...")
-        footprint_parser = EasyEDAParser()
+        footprint_parser = EasyEDAFootprintParser()
         canonical_footprint = footprint_parser.parse_easyeda_json(
             raw_cad_data
         )  # Fixed method name

@@ -1,16 +1,11 @@
 import argparse
 import logging
 import sys
-from pathlib import Path
 
-# Add project root to the Python path to allow absolute imports
-project_root = Path(__file__).resolve().parent
-sys.path.insert(0, str(project_root))
-
-from library_manager import LibraryManager
-from search import Search
 from adapters.search_engine import Vendor
+from library_manager import LibraryManager
 from models.search_result import SearchResult
+from search import Search
 
 # --- Basic Logging Setup ---
 logging.basicConfig(

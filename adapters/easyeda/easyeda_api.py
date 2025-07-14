@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Tuple
 from uuid import UUID
 
 import requests
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 API_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5"
 SVG_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/svgs"
+ENDPOINT_3D_MODEL_STEP = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}"
 SEARCH_ENDPOINT = "https://jlcpcb.com/api/overseas-pcb-order/v1/shoppingCart/smtGood/selectSmtComponentList/v2"
 IMAGE_ENDPOINT = "https://jlcpcb.com/api/file/downloadByFileSystemAccessId/{image_id}"
 
@@ -29,6 +31,17 @@ class EasyEDAApi(SearchEngine):
             "User-Agent": const.USER_AGENT,
         }
 
+    def get_step_3d_model(self, uuid: str) -> bytes:
+        r = requests.get(
+            url=ENDPOINT_3D_MODEL_STEP.format(uuid=uuid),
+            headers={"User-Agent": self.headers["User-Agent"]},
+        )
+        if r.status_code != requests.codes.ok:
+            logger.info(f"No step 3D model data found for uuid:{uuid} on easyeda")
+            return None
+        logger.info(f"{r.status_code} {ENDPOINT_3D_MODEL_STEP}")
+        return r.content
+
     def get_and_cache_svg_data(self, lcsc_id: str) -> Optional[dict]:
         cache_path = self._get_cache_path(f"svg_{lcsc_id}", "json")
         cached_data = self._load_from_cache(cache_path)
@@ -38,6 +51,28 @@ class EasyEDAApi(SearchEngine):
         if r.status_code == 200 and r.json().get("success"):
             self._save_to_cache(cache_path, r.content)
             return r.json()
+        return None
+
+    def get_and_cache_model_3d_step_data(self, cad_data: dict) -> Tuple[str, Path]:
+        parts = cad_data["packageDetail"]["dataStr"]["shape"]
+        svgnodes = [k for k in parts if k.startswith("SVGNODE")]
+        if svgnodes:
+            svgjson = svgnodes[-1].split("~")[-1]
+            svg_node = json.loads(svgjson)
+            attrs_3d = svg_node.get("attrs", {})
+            if attrs_3d.get("uuid"):
+                uuid_3d = str(UUID(attrs_3d["uuid"]))
+                cache_path = self._get_cache_path(f"{uuid_3d}", "step")
+
+                cached_data = self._load_from_cache(cache_path)
+                if cached_data:
+                    logger.info("Found cached 3D Model STEP file")
+                    return uuid_3d, cache_path
+
+                model3d = self.get_step_3d_model(attrs_3d["uuid"])
+                logger.info("Found 3D Model STEP file, saving...")
+                self._save_to_cache(cache_path, model3d)
+                return uuid_3d, cache_path
         return None
 
     def _generate_footprint_png_from_data(
@@ -188,6 +223,11 @@ class EasyEDAApi(SearchEngine):
             return search_result
 
         search_result.raw_cad_data = cad_data
+
+        (
+            search_result.footprint.model_3d_uuid,
+            search_result.footprint_model_3d_step_cache_path,
+        ) = self.get_and_cache_model_3d_step_data(cad_data)
 
         svg_data = self.get_and_cache_svg_data(search_result.lcsc_id)
         if svg_data:

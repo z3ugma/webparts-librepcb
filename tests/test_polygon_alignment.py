@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from adapters.easyeda.easyeda_api import EasyEDAApi
-from adapters.easyeda.easyeda_footprint import EasyEDAParser
+from adapters.easyeda.easyeda_footprint import EasyEDAFootprintParser
 from adapters.librepcb.librepcb_footprint import (
     footprint_alignment_to_librepcb_settings,
 )
@@ -25,7 +25,7 @@ def test_refactored_alignment():
 
     # Initialize components
     api = EasyEDAApi()
-    parser = EasyEDAParser()
+    parser = EasyEDAFootprintParser()
 
     # Test with a specific component
     lcsc_id = "C2838500"

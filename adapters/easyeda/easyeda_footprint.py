@@ -1,286 +1,410 @@
 # Global imports
 import json
+import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 from uuid import UUID, uuid4
 
-from models.footprint import (  # Relative import if in a package; from footprint_model import ( # Or direct if in the same folder and you add to sys.path
-    Drill,
-    DrillShape,
-    Footprint,
-    Model3D,
-    Pad,
-    PadShape,
-    PadType,
-)
-from models.graphics import (
-    Arc,
+from librepcb_parts_generator.entities.common import (
+    Align,
+    Angle,
+    Author,
+    Category,
     Circle,
-    GraphicElement,
-    Line,
-    Point,
+    Created,
+    Deprecated,
+    Description,
+    Diameter,
+    Fill,
+    GeneratedBy,
+    GrabArea,
+    Height,
+    Keywords,
+    Layer,
+    Name,
     Polygon,
-    Polyline,
-    Rectangle,
-    Text,
-    TextAlignHorizontal,
-    TextAlignVertical,
+    Position,
+    Position3D,
+    Rotation,
+    Rotation3D,
+    Value,
+    Version,
+    Vertex,
+    Width,
 )
-from models.layer import LayerRef, LayerType
+from librepcb_parts_generator.entities.package import (
+    AssemblyType,
+    AutoRotate,
+    ComponentSide,
+    CopperClearance,
+    DrillDiameter,
+    Footprint,
+    Footprint3DModel,
+    FootprintPad,
+    Hole,
+    Layer,
+    LetterSpacing,
+    LineSpacing,
+    Mirror,
+    Package,
+    Package3DModel,
+    PackagePad,
+    PackagePadUuid,
+    PadFunction,
+    PadHole,
+    Position,
+    Shape,
+    ShapeRadius,
+    Size,
+    SolderPasteConfig,
+    StopMaskConfig,
+    StrokeText,
+    StrokeWidth,
+)
 
-# Assuming your Pydantic models (Footprint, Pad, Point, Line, LayerType, LayerRef, etc.)
-# are in a file named footprint_model.py
+from constants import DEFAULT_VERSION
 
-
-# --- SVG Path Parsing (Simplified for M, L, H, V, Z) ---
-# For full SVG arc (A) to center-point conversion, a more robust library or implementation is needed.
-# For now, we'll focus on simpler paths and leave Arc parsing as a TODO if complex.
-
-
-def parse_svg_path_to_points(
-    path_str: str, offset_x: float, offset_y: float, unit_scale: float
-) -> List[Point]:
-    points: List[Point] = []
-
-    # Normalize path: remove extra spaces around commands and commas
-    path_str = re.sub(
-        r"\s*([MLHVZ])\s*", r"\1", path_str, flags=re.IGNORECASE
-    )  # Remove space around commands
-    path_str = re.sub(r"\s*,\s*", ",", path_str)  # Normalize commas
-    path_str = path_str.replace(
-        ",", " "
-    )  # Replace commas with spaces for easier splitting
-
-    # Split into command and coordinate groups
-    # This regex captures a command (M, L, H, V, Z) and the string of coordinates that follows
-    # until the next command or end of string.
-    command_groups = re.findall(r"([MLHVZ])([^MLHVZ]*)", path_str, flags=re.IGNORECASE)
-
-    current_x, current_y = 0.0, 0.0
-    start_x, start_y = 0.0, 0.0  # For 'Z' command
-
-    for i, (command_char, coords_segment) in enumerate(command_groups):
-        coords_str = coords_segment.strip()
-        raw_coords = [float(c) for c in coords_str.split()] if coords_str else []
-
-        is_relative = command_char.islower()
-        command = command_char.upper()
-
-        if command == "M":  # Moveto
-            for j in range(0, len(raw_coords), 2):
-                px, py = raw_coords[j], raw_coords[j + 1]
-                if is_relative and points:  # Relative moveto (after first point)
-                    current_x += px
-                    current_y += py
-                else:  # Absolute moveto or first moveto
-                    current_x = px
-                    current_y = py
-
-                scaled_x = current_x * unit_scale - offset_x
-                scaled_y = current_y * unit_scale - offset_y
-                points.append(Point(x=scaled_x, y=scaled_y))
-                if i == 0 and j == 0:  # Store first point for potential 'Z'
-                    start_x, start_y = scaled_x, scaled_y
-
-        elif command == "L":  # Lineto
-            for j in range(0, len(raw_coords), 2):
-                px, py = raw_coords[j], raw_coords[j + 1]
-                if is_relative:
-                    current_x += px
-                    current_y += py
-                else:
-                    current_x, current_y = px, py
-                points.append(
-                    Point(
-                        x=current_x * unit_scale - offset_x,
-                        y=current_y * unit_scale - offset_y,
-                    )
-                )
-
-        elif command == "H":  # Horizontal lineto
-            for val in raw_coords:
-                if is_relative:
-                    current_x += val
-                else:
-                    current_x = val
-                points.append(
-                    Point(
-                        x=current_x * unit_scale - offset_x,
-                        y=current_y * unit_scale - offset_y,
-                    )
-                )
-
-        elif command == "V":  # Vertical lineto
-            for val in raw_coords:
-                if is_relative:
-                    current_y += val
-                else:
-                    current_y = val
-                points.append(
-                    Point(
-                        x=current_x * unit_scale - offset_x,
-                        y=current_y * unit_scale - offset_y,
-                    )
-                )
-
-        elif command == "Z":  # ClosePath
-            if points and (points[-1].x != start_x or points[-1].y != start_y):
-                points.append(Point(x=start_x, y=start_y))
-            # After Z, the path is closed. A new M should follow if path continues.
-            # For simple polygons, this is usually the end.
-            current_x, current_y = (
-                start_x / unit_scale,
-                start_y / unit_scale,
-            )  # Reset current point to start
-
-    return points
+logger = logging.getLogger(__name__)
 
 
-# Placeholder for SVG Arc to Center-Point conversion (Complex)
-def convert_svg_arc_to_center_params(
-    x1: float,
-    y1: float,
-    x2: float,
-    y2: float,
-    fa: bool,
-    fs: bool,
-    rx: float,
-    ry: float,
-    phi_degrees: float,
-    offset_x: float,
-    offset_y: float,
-    unit_scale: float,
-) -> Tuple[Point, float, float, float]:  # center, radius_x, start_angle, sweep_angle
-    # This is a non-trivial conversion.
-    # See: https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
-    # For now, returning dummy values.
-    # A proper implementation would involve matrix math and trigonometry.
-    print(
-        f"Warning: SVG Arc parsing is complex and not fully implemented. Shape: A {rx} {ry} {phi_degrees} {1 if fa else 0} {1 if fs else 0} {x2} {y2}"
-    )
-    # Using scaled coordinates for dummy values
-    scaled_x1, scaled_y1 = x1 * unit_scale, y1 * unit_scale
-    scaled_x2, scaled_y2 = x2 * unit_scale, y2 * unit_scale
-    center_x = (scaled_x1 + scaled_x2) / 2
-    center_y = (scaled_y1 + scaled_y2) / 2
-    radius = ((scaled_x2 - scaled_x1) ** 2 + (scaled_y2 - scaled_y1) ** 2) ** 0.5 / 2
-    return (
-        Point(x=center_x, y=center_y),
-        radius,
-        0.0,
-        180.0,
-    )  # Dummy start_angle, sweep_angle
+# Define Number for type hinting
+Number = Union[int, float]
 
 
-class EasyEDAParser:
+class Pad(NamedTuple):
+    footprint_pad: FootprintPad
+    package_pad: PackagePad
+
+
+class Model3DWithOrigin(NamedTuple):
+    model: Footprint3DModel
+    position_3d: Position3D
+    rotation_3d: Rotation3D
+
+
+# Convert EasyEDA's internal geometric units (10 mil per unit) into millimeters.
+# 1 unit = 10 mil → 0.254 mm.
+# The canvas 'unit' field is only for editor display (grid/snap), not for shape data.
+UNIT_SCALE = 0.254
+
+
+# # Placeholder for SVG Arc to Center-Position conversion (Complex)
+# def convert_svg_arc_to_center_params(
+#     x1: float,
+#     y1: float,
+#     x2: float,
+#     y2: float,
+#     fa: bool,
+#     fs: bool,
+#     rx: float,
+#     ry: float,
+#     phi_degrees: float,
+#     offset_x: float,
+#     offset_y: float,
+#     UNIT_SCALE: float,
+# ) -> Tuple[Position, float, float, float]:  # center, radius_x, start_angle, sweep_angle
+#     # This is a non-trivial conversion.
+#     # See: https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+#     # For now, returning dummy values.
+#     # A proper implementation would involve matrix math and trigonometry.
+#     print(
+#         f"Warning: SVG Arc parsing is complex and not fully implemented. Shape: A {rx} {ry} {phi_degrees} {1 if fa else 0} {1 if fs else 0} {x2} {y2}"
+#     )
+#     # Using scaled coordinates for dummy values
+#     scaled_x1, scaled_y1 = x1 * UNIT_SCALE, y1 * UNIT_SCALE
+#     scaled_x2, scaled_y2 = x2 * UNIT_SCALE, y2 * UNIT_SCALE
+#     center_x = (scaled_x1 + scaled_x2) / 2
+#     center_y = (scaled_y1 + scaled_y2) / 2
+#     radius = ((scaled_x2 - scaled_x1) ** 2 + (scaled_y2 - scaled_y1) ** 2) ** 0.5 / 2
+#     return (
+#         Position(x=center_x, y=center_y),
+#         radius,
+#         0.0,
+#         180.0,
+#     )  # Dummy start_angle, sweep_angle
+
+
+class EasyEDAFootprintParser:
     def __init__(self):
-        self.layer_map: Dict[str, LayerRef] = {}
-        # Store (CDM LayerType for mask, expansion value)
-        self.mask_layer_properties: Dict[str, Tuple[LayerType, Optional[float]]] = {}
-        self.easyeda_layer_id_to_name: Dict[str, str] = {}
-        self.unit_scale = 0.254
-        """
-        Convert EasyEDA's internal geometric units (10 mil per unit) into millimeters.
-        1 unit = 10 mil → 0.254 mm.
-        The canvas 'unit' field is only for editor display (grid/snap), not for shape data.
-        """
+        self.layer_map: Dict[str, Layer] = {}
+        self.unfilled_layers: List[Layer] = []
+        self.side_map: Dict[str, ComponentSide] = {}
+        self.offset_x = 0.0
+        self.offset_y = 0.0
+
+    def xpos(self, cx: Number) -> float:
+        return float(cx) * UNIT_SCALE - self.offset_x
+
+    def ypos(self, cy: Number) -> float:
+        return (float(cy) * UNIT_SCALE - self.offset_y) * -1
+
+    # --- SVG Path Parsing (Simplified for M, L, H, V, Z) ---
+    # For full SVG arc (A) to center-point conversion, a more robust library or implementation is needed.
+    # For now, we'll focus on simpler paths and leave Arc parsing as a TODO if complex.
+
+    def parse_svg_path_to_points(self, path_str: str) -> List[Position]:
+        points: List[Position] = []
+
+        # Normalize path: remove extra spaces around commands and commas
+        path_str = re.sub(
+            r"\s*([MLHVZ])\s*", r"\1", path_str, flags=re.IGNORECASE
+        )  # Remove space around commands
+        path_str = re.sub(r"\s*,\s*", ",", path_str)  # Normalize commas
+        path_str = path_str.replace(
+            ",", " "
+        )  # Replace commas with spaces for easier splitting
+
+        # Split into command and coordinate groups
+        # This regex captures a command (M, L, H, V, Z) and the string of coordinates that follows
+        # until the next command or end of string.
+        command_groups = re.findall(
+            r"([MLHVZ])([^MLHVZ]*)", path_str, flags=re.IGNORECASE
+        )
+
+        current_x, current_y = 0.0, 0.0
+        start_x, start_y = 0.0, 0.0  # For 'Z' command
+
+        for i, (command_char, coords_segment) in enumerate(command_groups):
+            coords_str = coords_segment.strip()
+            raw_coords = [float(c) for c in coords_str.split()] if coords_str else []
+
+            is_relative = command_char.islower()
+            command = command_char.upper()
+
+            if command == "M":  # Moveto
+                for j in range(0, len(raw_coords), 2):
+                    px, py = raw_coords[j], raw_coords[j + 1]
+                    if is_relative and points:  # Relative moveto (after first point)
+                        current_x += px
+                        current_y += py
+                    else:  # Absolute moveto or first moveto
+                        current_x = px
+                        current_y = py
+
+                    scaled_x = self.xpos(current_x)
+                    scaled_y = self.ypos(current_y)
+                    points.append(Position(x=scaled_x, y=scaled_y))
+                    if i == 0 and j == 0:  # Store first point for potential 'Z'
+                        start_x, start_y = scaled_x, scaled_y
+
+            elif command == "L":  # Lineto
+                for j in range(0, len(raw_coords), 2):
+                    px, py = raw_coords[j], raw_coords[j + 1]
+                    if is_relative:
+                        current_x += px
+                        current_y += py
+                    else:
+                        current_x, current_y = px, py
+                    points.append(
+                        Position(
+                            x=self.xpos(current_x),
+                            y=self.ypos(current_y),
+                        )
+                    )
+
+            elif command == "H":  # Horizontal lineto
+                for val in raw_coords:
+                    if is_relative:
+                        current_x += val
+                    else:
+                        current_x = val
+                    points.append(
+                        Position(
+                            x=self.xpos(current_x),
+                            y=self.ypos(current_y),
+                        )
+                    )
+
+            elif command == "V":  # Vertical lineto
+                for val in raw_coords:
+                    if is_relative:
+                        current_y += val
+                    else:
+                        current_y = val
+                    points.append(
+                        Position(
+                            x=self.xpos(current_x),
+                            y=self.ypos(current_y),
+                        )
+                    )
+
+            elif command == "Z":  # ClosePath
+                if points and (points[-1].x != start_x or points[-1].y != start_y):
+                    points.append(Position(x=start_x, y=start_y))
+                # After Z, the path is closed. A new M should follow if path continues.
+                # For simple polygons, this is usually the end.
+                current_x, current_y = (
+                    start_x / UNIT_SCALE,
+                    start_y / UNIT_SCALE,
+                )  # Reset current point to start
+
+        return points
 
     def _parse_layer_definitions(self, layer_strings: List[str]):
         """
         Parses EasyEDA layer definitions and populates self.layer_map and self.mask_expansions.
         Example: "1~TopLayer~#FF0000~true~false~true~"
-                 "7~TopSolderMaskLayer~#800080~true~false~true~0.3" (0.3 is expansion)
         """
         self.layer_map = {}
+        self.side_map = {}
         self.mask_layer_properties = {}
         self.easyeda_layer_id_to_name = {}
 
         # Basic mapping from EasyEDA layer names/IDs to CDM LayerType
         # This needs to be comprehensive based on common EasyEDA usage
-        name_to_cdm_type = {
-            "toplayer": LayerType.TOP_COPPER,
-            "bottomlayer": LayerType.BOTTOM_COPPER,
-            "topsilklayer": LayerType.TOP_SILKSCREEN,
-            "bottomsilklayer": LayerType.BOTTOM_SILKSCREEN,
-            "toppastemasklayer": LayerType.TOP_PASTE_MASK,
-            "bottompastemasklayer": LayerType.BOTTOM_PASTE_MASK,
-            "topsoldermasklayer": LayerType.TOP_SOLDER_MASK,
-            "bottomsoldermasklayer": LayerType.BOTTOM_SOLDER_MASK,
-            "boardoutline": LayerType.BOARD_OUTLINE,  # Or COURTYARD depending on usage
-            "document": LayerType.DOCUMENTATION,
-            "mechanical": LayerType.MECHANICAL,  # Will require index if multiple
-            "topassembly": LayerType.ASSEMBLY_TOP,
-            "bottomassembly": LayerType.ASSEMBLY_BOTTOM,
-            "multi-layer": LayerType.MULTI_LAYER,
-            "hole": None,  # Special, not a drawing layer
-            "componentshapelayer": LayerType.COURTYARD_TOP,  # A common interpretation
-            "leadshapelayer": LayerType.DOCUMENTATION,  # Or specific fabrication layer
-            "componentmarkinglayer": LayerType.ASSEMBLY_TOP,  # Or documentation
+        # From https://github.com/dillonHe/EasyEDA-Documents/blob/master/Open-File-Format/PCB.md
+
+        layer_names_map = {
+            # EasyEDA: #LibrePCB
+            "boardoutline": Layer("brd_outlines"),
+            "bottomlayer": Layer("bot_cu"),
+            "bottompastemasklayer": Layer("bot_stop_mask"),
+            "bottompasterlayer": Layer("bot_solder_paste"),
+            "bottomsilklayer": Layer("bot_legend"),
+            "bottomsolderlayer": Layer("bot_solder_paste"),
+            "bottomsoldermasklayer": Layer("bot_documentation"),
+            "componentmarkinglayer": Layer("brd_documentation"),
+            "componentpolaritylayer": Layer("brd_documentation"),
+            "componentshapelayer": Layer("top_package_outlines"),
+            "document": Layer("brd_documentation"),
+            "leadshapelayer": Layer("brd_documentation"),
+            "multi-layer": Layer("top_cu"),
+            "toplayer": Layer("top_cu"),
+            "toppastemasklayer": Layer("top_stop_mask"),
+            "toppasterlayer": Layer("top_solder_paste"),
+            "topsilklayer": Layer("top_legend"),
+            "topsolderlayer": Layer("top_solder_paste"),
+            "topsoldermasklayer": Layer("top_documentation"),
+            "topassembly": Layer("top_documentation"),
+            "bottomassembly": Layer("bot_documentation"),
+            "all": Layer("top_documentation"),
+            # "TopLayer": Layer("top_cu"),
+            # "Multi-Layer": Layer("top_cu"),
+            # "BottomLayer": Layer("bot_cu"),
+            # "TopSilkLayer": Layer("top_legend"),
+            # "BottomSilkLayer": Layer("bot_legend"),
+            # "TopPasterLayer": Layer("top_solder_paste"),
+            # "TopPasteMaskLayer": Layer("top_stop_mask"),
+            # "BottomPasterLayer": Layer("bot_solder_paste"),
+            # "BottomPasteMaskLayer": Layer("bot_stop_mask"),
+            # "TopSolderLayer": Layer("top_solder_paste"),
+            # "BottomSolderLayer": Layer("bot_solder_paste"),
+            # "TopSolderMaskLayer": Layer("top_documentation"),
+            # "BottomSolderMaskLayer": Layer("bot_documentation"),
+            # "BoardOutline": Layer("brd_outlines"),
+            # "Document": Layer("brd_documentation"),
+            # "LeadShapeLayer": Layer("brd_documentation"),
+            # "ComponentMarkingLayer": Layer("brd_documentation"),
+            # "ComponentShapeLayer": Layer("top_package_outlines"),
+            # "ComponentPolarityLayer": Layer("brd_documentation"),
+            # "topLayer": Layer(""),
+            # "bottomLayer": Layer(""),
+            # "topSilkLayer": Layer(""),
+            # "bottomSilkLayer": Layer(""),
+            # "topPasterLayer": Layer(""),
+            # "bottomPasterLayer": Layer(""),
+            # "topSolderLayer": Layer(""),
+            # "bottomSolderLayer": Layer(""),
+            # "all": Layer(""),
+            # "document": Layer("")
+            # Unknown layer: Ratlines
+            # Unknown layer: BoardOutLine
+            # Unknown layer: Multi-Layer
+            # Unknown layer: TopAssembly
+            # Unknown layer: BottomAssembly
+            # Unknown layer: Mechanical
+            # Unknown layer: 3DModel
+            # Unknown layer: ComponentShapeLayer
+            # Unknown layer: LeadShapeLayer
+            # Unknown layer: ComponentMarkingLayer
+            # Unknown layer: Hole
+            # Unknown layer: DRCError
+            #
+            # All LibrePCB Layers
+            # "bot_courtyard", tr("Bottom Courtyard"),
+            # "bot_documentation", tr("Bottom Documentation"),
+            # "bot_finish", tr("Bottom Finish"),
+            # "bot_glue", tr("Bottom Glue"), Theme::Color::sBoardGlueBot,
+            # "bot_hidden_grab_areas", tr("Bottom Hidden Grab Areas"),
+            # "bot_legend", tr("Bottom Legend"),
+            # "bot_names", tr("Bottom Names"),
+            # "bot_package_outlines", tr("Bottom Package Outlines"),
+            # "bot_solder_paste", tr("Bottom Solder Paste"),
+            # "bot_stop_mask", tr("Bottom Stop Mask"),
+            # "bot_values", tr("Bottom Values"),
+            # "brd_alignment", tr("Alignment"),
+            # "brd_comments", tr("Comments"),
+            # "brd_cutouts", tr("Board Cutouts"),
+            # "brd_documentation", tr("Documentation"),
+            # "brd_frames", tr("Sheet Frames"),
+            # "brd_guide", tr("Guide"), Theme::Color::sBoardGuide,
+            # "brd_measures", tr("Measures"),
+            # "brd_outlines", tr("Board Outlines"),
+            # "brd_plated_cutouts", tr("Plated Board Cutouts"),
+            # "sch_comments", tr("Comments"),
+            # "sch_documentation", tr("Documentation"),
+            # "sch_frames", tr("Sheet Frames"),
+            # "sch_guide", tr("Guide"), Theme::Color::sSchematicGuide,
+            # "sym_hidden_grab_areas", tr("Hidden Grab Areas"),
+            # "sym_names", tr("Names"), Theme::Color::sSchematicNames,
+            # "sym_outlines", tr("Outlines"),
+            # "sym_pin_names", tr("Pin Names"),
+            # "sym_values", tr("Values"), Theme::Color::sSchematicValues,
+            # "top_courtyard", tr("Top Courtyard"),
+            # "top_cu", tr("Top Copper"), Theme::Color::sBoardCopperTop,
+            # "top_documentation", tr("Top Documentation"),
+            # "top_finish", tr("Top Finish"),
+            # "top_glue", tr("Top Glue"), Theme::Color::sBoardGlueTop,
+            # "top_hidden_grab_areas", tr("Top Hidden Grab Areas"),
+            # "top_legend", tr("Top Legend"),
+            # "top_names", tr("Top Names"), Theme::Color::sBoardNamesTop,
+            # "top_package_outlines", tr("Top Package Outlines"),
+            # "top_solder_paste", tr("Top Solder Paste"),
+            # "top_stop_mask", tr("Top Stop Mask"),
+            # "top_values", tr("Top Values"),
+        }
+        for i in range(1, 33):
+            layer_names_map[f"inner{i}"] = (Layer("in{i}_cu"),)
+
+        side_names_map = {
+            # EasyEDA: #LibrePCB
+            "toplayer": ComponentSide.TOP,
+            "bottomlayer": ComponentSide.BOTTOM,
+            "multi-layer": ComponentSide.TOP,
         }
 
-        # Track mechanical layer indices
-        mechanical_layer_count = 0
+        self.unfilled_layers = [k.layer for k in [Layer("top_package_outlines")]]
 
         for layer_str in layer_strings:
             parts = layer_str.split("~")
             ee_id = parts[0]
-            ee_name = parts[1].lower().replace(" ", "").replace("-", "")
-            self.easyeda_layer_id_to_name[ee_id] = parts[1]  # Store original name
+            ee_name = parts[1].lower()
 
-            expansion: Optional[float] = None
-            if len(parts) > 7 and parts[7]:
-                try:
-                    expansion = float(parts[7])
-                except ValueError:
-                    pass  # Not a float
+            lp_layer = layer_names_map.get(ee_name)
+            if lp_layer:
+                self.layer_map[ee_id] = lp_layer
+            else:
+                logger.error(f"Unknown layer: {ee_id} {ee_name}")
 
-            cdm_type: Optional[LayerType] = None
-            cdm_index: Optional[int] = None
+            lp_side = side_names_map.get(ee_name)
+            if lp_side:
+                self.side_map[ee_id] = lp_side
 
-            if ee_name in name_to_cdm_type:
-                cdm_type = name_to_cdm_type[ee_name]
-            elif "inner" in ee_name:
-                try:
-                    idx = int(ee_name.replace("inner", ""))
-                    cdm_type = LayerType.INNER_COPPER
-                    cdm_index = idx
-                except ValueError:
-                    print(f"Warning: Could not parse index for inner layer: {parts[1]}")
-                    cdm_type = LayerType.DOCUMENTATION  # Fallback
-            else:  # Fallback for unknown layers
-                print(
-                    f"Warning: Unknown EasyEDA layer name '{parts[1]}' (id: {ee_id}). Mapping to DOCUMENTATION."
-                )
-                cdm_type = LayerType.DOCUMENTATION
-
-            if cdm_type == LayerType.MECHANICAL:
-                mechanical_layer_count += 1
-                cdm_index = mechanical_layer_count
-
-            if cdm_type:
-                self.layer_map[ee_id] = LayerRef(type=cdm_type, index=cdm_index)
-                if cdm_type.value.endswith("_mask"):
-                    self.mask_layer_properties[ee_id] = (cdm_type, expansion)
-            elif (
-                ee_id.lower() == "hole"
-            ):  # Special "Hole" definition, not really a layer for drawing on.
-                pass  # No direct LayerRef, but might store its properties if needed elsewhere.
-
-    def _parse_pad(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Pad]:
-        # PAD~shape~centerX~centerY~width~height~layerId~net~number~holeRadius~points~rotation~id~holeLength~holePoint~isPlated
-        # indices:0    1      2       3      4      5       6        7    8       9           10     11      12  13         14         15
+    def _parse_pad(self, parts: List[str]) -> Optional[Pad]:
+        #         PAD~shape~centerX~centerY~width~height~layerId~net~number~holeRadius~points~rotation~id~holeLength~holePosition~isPlated
+        # indices:0   1     2       3      4      5      6       7   8      9          10     11       12 13         14           15
         # Note: `points` for polygon pads, `holeLength` for slotted holes.
         # `isPlated` is often empty or "Y"
         try:
             ee_shape_str = parts[1]
-            center_x = float(parts[2]) * self.unit_scale - offset_x
-            center_y = float(parts[3]) * self.unit_scale - offset_y
-            width = float(parts[4]) * self.unit_scale
-            height = float(parts[5]) * self.unit_scale
+            center_x = self.xpos(parts[2])
+            center_y = self.ypos(parts[3])
+            width = float(parts[4]) * UNIT_SCALE
+            height = float(parts[5]) * UNIT_SCALE
+
             layer_id_str = parts[6]
+
             # net_name = parts[7] # Not used in CDM pad directly
             pad_number = parts[8]
 
@@ -289,27 +413,25 @@ class EasyEDAParser:
             rotation_str = parts[11]
             # id_str = parts[12]
             hole_length_str = parts[13]  # For slotted holes
-            # hole_point_str = parts[14]
+            hole_point_str = parts[14]
             is_plated_str = (
                 parts[15] if len(parts) > 15 else "Y"
             )  # Default to plated if THT
 
-            pad_layer = self.layer_map.get(layer_id_str)
-            if not pad_layer:
-                print(
-                    f"Warning: Unknown layer ID '{layer_id_str}' for PAD {pad_number}. Skipping."
-                )
-                return None
+            side = self.side_map.get(layer_id_str)
+            if not side:
+                raise Exception(f"No ComponentSide found for layer ID {layer_id_str}")
 
-            pad_type = PadType.SMD
-            drill_diameter: Optional[float] = None
-            drill_slot_length: Optional[float] = None
-            drill_shape: Optional[DrillShape] = DrillShape.ROUND
-            plated: bool = True  # Default for THT style pads
+            # drill_diameter: Optional[float] = None
+            # drill_slot_length: Optional[float] = None
+            # drill_shape: Optional[DrillShape] = DrillShape.ROUND
+            # plated: bool = True  # Default for THT style pads
 
-            if hole_radius_str and float(hole_radius_str) > 0:
-                pad_type = PadType.THROUGH_HOLE
-                drill_diameter = float(hole_radius_str) * 2 * self.unit_scale
+            holes: List[PadHole] = []
+
+            if float(hole_radius_str) > 0 or hole_point_str:
+                logger.info(f"This pad has holes: {pad_number}")
+                drill_diameter = float(hole_radius_str) * 2 * UNIT_SCALE
                 plated = not (
                     is_plated_str.upper() == "N"
                     or is_plated_str == "false"
@@ -317,102 +439,96 @@ class EasyEDAParser:
                 )
 
                 if hole_length_str and float(hole_length_str) > 0:
-                    drill_slot_length = float(hole_length_str) * self.unit_scale
-                    drill_shape = DrillShape.OBLONG
-                else:
-                    drill_shape = DrillShape.ROUND
-            elif (
-                pad_layer.type == LayerType.MULTI_LAYER
-            ):  # If explicitly multi-layer but no drill, might be an issue
-                pad_type = PadType.CONNECT  # Or could be an error, or an implicit via
+                    drill_slot_length = float(hole_length_str) * UNIT_SCALE
 
-            start_layer, end_layer = None, None
-            if pad_type in [PadType.THROUGH_HOLE, PadType.VIA]:
-                # Assume THT/Via spans all copper layers unless specified otherwise.
-                # A more sophisticated system would know the board stackup.
-                # For now, let's default to Top <-> Bottom for simplicity if it's on an outer layer.
-                if (
-                    pad_layer.type == LayerType.TOP_COPPER
-                    or pad_layer.type == LayerType.MULTI_LAYER
-                ):
-                    start_layer = LayerRef(type=LayerType.TOP_COPPER)
-                    end_layer = LayerRef(
-                        type=LayerType.BOTTOM_COPPER
-                    )  # Default assumption
-                elif pad_layer.type == LayerType.BOTTOM_COPPER:
-                    start_layer = LayerRef(type=LayerType.BOTTOM_COPPER)
-                    end_layer = LayerRef(
-                        type=LayerType.TOP_COPPER
-                    )  # Default assumption
+                vertices: List[Position] = []
+                raw_coords = [float(c) for c in hole_point_str.split(" ") if c]
+                if raw_coords:  # This is a list of coordinates, implying a slotted hole
+                    for i in range(0, len(raw_coords), 2):
+                        vertices.append(
+                            Vertex(
+                                Position(
+                                    x=self.xpos(raw_coords[i]) - center_x,
+                                    y=self.ypos(raw_coords[i + 1]) - center_y,
+                                ),
+                                Angle(0),
+                            )
+                        )
+                else:  # if there's only one coordinate then it's a circular hole and the vertex is the same as the pad center
+                    vertices.append(
+                        Vertex(
+                            Position(
+                                x=0,
+                                y=0,
+                            ),
+                            Angle(0),
+                        )
+                    )
+                pad_hole = PadHole(
+                    uuid=str(uuid4()),
+                    diameter=DrillDiameter(drill_diameter),
+                    vertices=vertices,
+                )
+                holes.append(pad_hole)
 
-            cdm_shape: Optional[PadShape] = None
+            # Per https://github.com/dillonHe/EasyEDA-Documents/blob/master/Open-File-Format/PCB.md
+            # shape: ELLIPSE/RECT/OVAL/POLYGON
+            shape: Shape = Shape.ROUNDED_RECT
+            shape_radius: ShapeRadius = ShapeRadius(0)
             if ee_shape_str == "RECT":
-                cdm_shape = PadShape.ROUNDRECT
-            elif ee_shape_str == "OVAL":
-                cdm_shape = PadShape.OVAL
-            elif ee_shape_str == "ELLIPSE":  # Map to CIRCLE if w=h, else OVAL
-                cdm_shape = PadShape.CIRCLE if width == height else PadShape.OVAL
+                shape = Shape.ROUNDED_RECT
+            elif ee_shape_str in ("OVAL", "ELLIPSE"):
+                shape_radius = ShapeRadius(1.0)
             elif ee_shape_str == "POLYGON":
-                cdm_shape = PadShape.POLYGON
+                shape = Shape.POLYGON
             else:
-                print(
-                    f"Warning: Unknown EasyEDA pad shape '{ee_shape_str}'. Defaulting to RECTANGLE."
+                logger.error(
+                    f"Warning: Unknown EasyEDA pad shape '{ee_shape_str}'. Defaulting to Shape.ROUNDED_RECT."
                 )
-                cdm_shape = PadShape.ROUNDRECT
 
-            # Mask margins - need to fetch from layer properties
-            solder_mask_margin, paste_mask_margin = None, None
-            # This is a simplification. Real systems might have per-pad overrides or complex rules.
-            for _, (mask_type, expansion) in self.mask_layer_properties.items():
-                if expansion is not None:
-                    if mask_type in [
-                        LayerType.TOP_SOLDER_MASK,
-                        LayerType.BOTTOM_SOLDER_MASK,
-                    ]:
-                        solder_mask_margin = expansion * self.unit_scale
-                    elif mask_type in [
-                        LayerType.TOP_PASTE_MASK,
-                        LayerType.BOTTOM_PASTE_MASK,
-                    ]:
-                        paste_mask_margin = expansion * self.unit_scale
+            # # Mask margins - need to fetch from layer properties
+            # solder_mask_margin, paste_mask_margin = None, None
+            # # This is a simplification. Real systems might have per-pad overrides or complex rules.
+            # for _, (mask_type, expansion) in self.mask_layer_properties.items():
+            #     if expansion is not None:
+            #         if mask_type in [
+            #             LayerType.TOP_SOLDER_MASK,
+            #             LayerType.BOTTOM_SOLDER_MASK,
+            #         ]:
+            #             solder_mask_margin = expansion * UNIT_SCALE
+            #         elif mask_type in [
+            #             LayerType.TOP_PASTE_MASK,
+            #             LayerType.BOTTOM_PASTE_MASK,
+            #         ]:
+            #             paste_mask_margin = expansion * UNIT_SCALE
+            package_pad = PackagePad(uuid=str(uuid4()), name=Name(pad_number))
 
-            return Pad(
-                number=pad_number,
-                uuid=uuid4(),
-                pad_type=pad_type,
-                shape=cdm_shape,
-                position=Point(x=center_x, y=center_y),
-                width=width,
-                height=height
-                if cdm_shape != PadShape.CIRCLE
-                else width,  # Height same as width for circle
-                rotation=float(rotation_str) if rotation_str else 0.0,
-                layer=pad_layer,
-                drill_shape=drill_shape if drill_diameter else None,
-                drill_diameter=drill_diameter,
-                drill_slot_length=drill_slot_length,
-                plated=plated if drill_diameter else None,
-                start_layer=start_layer,
-                end_layer=end_layer,
-                solder_mask_margin=solder_mask_margin,
-                paste_mask_margin=paste_mask_margin,
-                vertices=parse_svg_path_to_points(
-                    parts[10], offset_x, offset_y, self.unit_scale
-                )
-                if cdm_shape == PadShape.POLYGON and parts[10]
-                else None,
+            footprint_pad = FootprintPad(
+                uuid=str(uuid4()),
+                side=side,
+                shape=shape,
+                position=Position(x=center_x, y=center_y),
+                rotation=Rotation(float(rotation_str) if rotation_str else 0.0),
+                size=Size(width, height),
+                radius=shape_radius,
+                stop_mask=StopMaskConfig(StopMaskConfig.AUTO),
+                solder_paste=SolderPasteConfig.OFF if holes else SolderPasteConfig.AUTO,
+                copper_clearance=CopperClearance(0.0),
+                function=PadFunction.STANDARD_PAD,
+                package_pad=PackagePadUuid(package_pad.uuid),
+                holes=holes,
             )
+
+            return Pad(footprint_pad, package_pad)
         except Exception as e:
-            print(f"Error parsing PAD string '{'~'.join(parts)}': {e}")
+            logger.error(f"Error parsing PAD string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_track(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Union[Line, Polyline]]:
+    def _parse_track(self, parts: List[str]) -> Optional[Polygon]:
         # TRACK~strokeWidth~layerId~net~points~id~isLocked
         # points: "X1 Y1 X2 Y2 X3 Y3..."
         try:
-            stroke_width = float(parts[1]) * self.unit_scale
+            stroke_width = float(parts[1]) * UNIT_SCALE
             layer_id_str = parts[2]
             # net = parts[3]
             points_str = parts[4]
@@ -426,42 +542,42 @@ class EasyEDAParser:
 
             raw_coords = [float(c) for c in points_str.split(" ") if c]
             if len(raw_coords) < 4 or len(raw_coords) % 2 != 0:
-                print(f"Warning: Invalid points for TRACK '{points_str}'. Skipping.")
+                logger.error(
+                    f"Warning: Invalid points for TRACK '{points_str}'. Skipping."
+                )
                 return None
 
-            cdm_points: List[Point] = []
+            vertices: List[Position] = []
             for i in range(0, len(raw_coords), 2):
-                cdm_points.append(
-                    Point(
-                        x=raw_coords[i] * self.unit_scale - offset_x,
-                        y=raw_coords[i + 1] * self.unit_scale - offset_y,
-                    )
+                vertices.append(
+                    Position(x=self.xpos(raw_coords[i]), y=self.ypos(raw_coords[i + 1]))
                 )
 
-            if len(cdm_points) == 2:
-                return Line(
-                    start=cdm_points[0],
-                    end=cdm_points[1],
-                    width=stroke_width,
-                    layer=track_layer,
-                )
-            else:
-                return Polyline(
-                    points=cdm_points, width=stroke_width, layer=track_layer
-                )
+            polygon = Polygon(
+                uuid=str(uuid4()),
+                layer=track_layer,
+                width=Width(stroke_width),
+                fill=Fill(
+                    False
+                    # True if track_layer.layer not in self.unfilled_layers else False
+                ),
+                grab_area=GrabArea(False),
+            )
+            for vertex in vertices:
+                polygon.add_vertex(Vertex(position=vertex, angle=Angle(0)))
+            return polygon
+
         except Exception as e:
-            print(f"Error parsing TRACK string '{'~'.join(parts)}': {e}")
+            logger.error(f"Error parsing TRACK string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_circle_primitive(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Circle]:
+    def _parse_circle_primitive(self, parts: List[str]) -> Optional[Circle]:
         # CIRCLE~cx~cy~radius~strokeWidth~layerId~id~isLocked~~ (last empty field in example)
         try:
-            cx = float(parts[1]) * self.unit_scale - offset_x
-            cy = float(parts[2]) * self.unit_scale - offset_y
-            radius = float(parts[3]) * self.unit_scale
-            stroke_width = float(parts[4]) * self.unit_scale
+            cx = self.xpos(parts[1])
+            cy = self.ypos(parts[2])
+            radius = float(parts[3]) * UNIT_SCALE
+            stroke_width = float(parts[4]) * UNIT_SCALE
             layer_id_str = parts[5]
 
             circle_layer = self.layer_map.get(layer_id_str)
@@ -472,23 +588,24 @@ class EasyEDAParser:
                 return None
 
             return Circle(
-                center=Point(x=cx, y=cy),
-                radius=radius,
-                stroke_width=stroke_width,
-                filled=False,  # EasyEDA circles are typically outlines
+                uuid=str(uuid4()),
                 layer=circle_layer,
+                width=Width(stroke_width),
+                fill=Fill(False),
+                grab_area=GrabArea(False),
+                diameter=Diameter(radius * 2),
+                position=Position(cx, cy),
             )
+
         except Exception as e:
-            print(f"Error parsing CIRCLE string '{'~'.join(parts)}': {e}")
+            logger.error(f"Error parsing CIRCLE string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_arc_primitive(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Arc]:
+    def _parse_arc_primitive(self, parts: List[str]) -> Optional[Polygon]:
         # ARC~strokeWidth~layerId~net~path~helperDots~id~isLocked
         # path is an SVG path string, e.g., "M X Y A RX RY XROT LARGEARC SWEEP X Y"
         try:
-            stroke_width = float(parts[1]) * self.unit_scale
+            stroke_width = float(parts[1]) * UNIT_SCALE
             layer_id_str = parts[2]
             # net = parts[3]
             path_str = parts[4]
@@ -498,69 +615,208 @@ class EasyEDAParser:
                 print(f"Warning: Unknown layer ID '{layer_id_str}' for ARC. Skipping.")
                 return None
 
-            # Extremely simplified SVG 'A' command parsing
-            # Example: M 395 300 A 5 5 0 0 1 400 295
-            match = re.match(
-                r"M\s*([\d\.]+)\s*([\d\.]+)\s*A\s*([\d\.]+)\s*([\d\.]+)\s*([\d\.]+)\s*([01])\s*([01])\s*([\d\.]+)\s*([\d\.]+)",
-                path_str,
-                re.IGNORECASE,
-            )
-            if match:
-                m_x, m_y, a_rx, a_ry, a_xrot, a_large_arc_f, a_sweep_f, a_x, a_y = map(
-                    float, match.groups()
+            import math
+            import re
+
+            def parse_svg_path_commands(path_str: str):
+                """
+                Parses an SVG path string into a list of commands and their parameters.
+                This is a more robust method than simple splitting.
+
+                Args:
+                    path_str: The string from the 'd' attribute of an SVG <path>.
+
+                Returns:
+                    A list of dictionaries, where each dictionary represents a command.
+                    e.g., [{'command': 'M', 'params': [x, y]}, {'command': 'A', ...}]
+                """
+                # This regex finds a command letter followed by any characters that are not a command letter.
+                # It correctly handles optional whitespace and commas.
+                COMMANDS = re.compile(
+                    "([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)"
                 )
 
-                # Call the complex conversion function (currently a placeholder)
-                center, radius_x, start_angle, sweep_angle = (
-                    convert_svg_arc_to_center_params(
-                        m_x,
-                        m_y,
-                        a_x,
-                        a_y,
-                        bool(int(a_large_arc_f)),
-                        bool(int(a_sweep_f)),
-                        a_rx,
-                        a_ry,
-                        a_xrot,
-                        self.unit_scale,  # Pass unit_scale to be applied inside
+                # This regex finds floating point numbers in the parameter string.
+                # After (Correct and idiomatic)
+                FLOATS = re.compile(r"[-+]?[0-9]*\.?[0-9]+")
+
+                commands = []
+                for command, params_str in COMMANDS.findall(path_str):
+                    params = [float(p) for p in FLOATS.findall(params_str)]
+                    commands.append({"command": command, "params": params})
+
+                return commands
+
+            # Parse using the robust function
+            parsed_commands = parse_svg_path_commands(path_str)
+
+            # Extract your values from the parsed structure
+            if (
+                len(parsed_commands) == 2
+                and parsed_commands[0]["command"].upper() == "M"
+                and parsed_commands[1]["command"].upper() == "A"
+            ):
+                move_params = parsed_commands[0]["params"]
+                arc_params = parsed_commands[1]["params"]
+
+                x1, y1 = self.xpos(move_params[0]), self.ypos(move_params[1])
+                rx, ry = arc_params[0] * UNIT_SCALE, arc_params[1] * UNIT_SCALE
+                rotation = arc_params[2]
+                large_arc_flag = int(arc_params[3])
+                sweep_flag = int(arc_params[4])
+                x2, y2 = self.xpos(arc_params[5]), self.ypos(arc_params[6])
+
+            def calculate_arc_center(
+                start,
+                end,
+                radius,
+                large_arc_flag: bool = False,
+                sweep_flag: bool = True,
+            ):
+                """
+                Calculate the center of the circle that contains an arc between two points.
+
+                Args:
+                    start: (x1, y1) starting point
+                    end: (x2, y2) ending point
+                    radius: radius of the circle
+                    large_arc_flag: whether to use the larger arc (> π)
+                    sweep_flag: True for counter-clockwise, False for clockwise
+
+                Returns:
+                    (cx, cy): center coordinates of the circle
+                """
+                x1, y1 = start
+                x2, y2 = end
+
+                # Chord vector and length
+                dx = x2 - x1
+                dy = y2 - y1
+                L = math.hypot(dx, dy)
+
+                # Ensure the arc is geometrically possible
+                if L > 2 * radius:
+                    raise ValueError(
+                        f"No circle with radius {radius} can connect points {L / 2:.3f} units apart"
                     )
-                )
 
-                # Note: convert_svg_arc_to_center_params should apply unit_scale to its inputs
-                # or its outputs. If it applies to inputs, then pass raw values.
-                # Here, it's assumed it works with scaled values or applies scaling.
-                # The current placeholder applies scaling to dummy values.
-                # For radius_x, it should be radius_x * self.unit_scale if a_rx was raw.
+                if L == 0:
+                    raise ValueError("Start and end points are identical")
 
-                return Arc(
-                    center=center,  # Already scaled by convert_svg_arc_to_center_params
-                    radius=radius_x,  # Assuming radius_x and radius_y are same for CDM Arc, take one
-                    start_angle=start_angle,  # In degrees
-                    end_angle=start_angle + sweep_angle,  # CDM expects end_angle
-                    width=stroke_width,  # Already scaled
-                    layer=arc_layer,
-                )
-            else:
-                print(
-                    f"Warning: Could not parse SVG ARC path string '{path_str}'. Skipping."
-                )
-                return None
+                # Midpoint of the chord
+                mx = (x1 + x2) / 2
+                my = (y1 + y2) / 2
+
+                # Distance from midpoint to center along perpendicular bisector
+                # Using Pythagorean theorem: radius² = (L/2)² + h²
+                h = math.sqrt(radius**2 - (L / 2) ** 2)
+
+                # Unit vector perpendicular to the chord
+                # Rotate the chord vector 90° counter-clockwise: (dx, dy) → (-dy, dx)
+                perp_x = -dy / L
+                perp_y = dx / L
+
+                # There are two possible centers, one on each side of the chord
+                center1 = (mx + h * perp_x, my + h * perp_y)
+                center2 = (mx - h * perp_x, my - h * perp_y)
+
+                # Choose the correct center based on the flags
+                # For SVG arcs, we need to consider both large_arc_flag and sweep_flag
+                if large_arc_flag == sweep_flag:
+                    return center2
+                else:
+                    return center1
+
+            def subtended_angle(
+                start, end, radius, large_arc_flag: bool, sweep_flag: bool
+            ):
+                """
+                Calculates the subtended angle of an arc, considering direction.
+
+                Args:
+                    start: (x1, y1) tuple
+                    end: (x2, y2) tuple
+                    radius: The circle's radius
+                    large_arc_flag: True for the arc > 180 degrees
+                    sweep_flag: True for counter-clockwise (positive angle) sweep
+
+                Returns:
+                    The subtended angle in radians, with a sign indicating direction.
+                """
+                x1, y1 = start
+                x2, y2 = end
+
+                # Chord length
+                dx = x2 - x1
+                dy = y2 - y1
+                L = math.hypot(dx, dy)
+
+                # Ensure the arc is possible
+                if L > 2 * radius:
+                    raise ValueError("No circle with radius R can connect these points")
+
+                # Central angle in radians
+                theta = 2 * math.asin(L / (2 * radius))
+                if large_arc_flag:
+                    theta = 2 * math.pi - theta
+
+                # Apply the direction based on the sweep_flag
+                # sweep_flag=1 is CCW (positive), sweep_flag=0 is CW (negative)
+                # but the y-axis is upside down
+                if sweep_flag:
+                    theta = -theta
+
+                return theta  # In radians
+
+            # Example
+            A = (x1, y1)
+            B = (x2, y2)
+            R = rx  # Try different radius values here
+
+            theta_rad = subtended_angle(A, B, R, large_arc_flag, sweep_flag)
+            theta_deg = math.degrees(theta_rad)
+
+            print(f"Angle in radians: {theta_rad}")
+            print(f"Angle in degrees: {theta_deg}")
+
+            print(f"Points: A{A}, B{B}")
+            print(f"Radius: {R}")
+            print(self.offset_x, self.offset_y)
+            center = calculate_arc_center(A, B, R, large_arc_flag, sweep_flag)
+            angle = subtended_angle(A, B, R, large_arc_flag, sweep_flag)
+
+            print(f"large_arc={large_arc_flag}, sweep={sweep_flag}:")
+            print(f"  Center: ({center[0]:.3f}, {center[1]:.3f})")
+            print(f"  Subtended angle: {math.degrees(angle):.1f}°")
+
+            # Verify the center is correct distance from both points
+            dist_A = math.hypot(center[0] - A[0], center[1] - A[1])
+            dist_B = math.hypot(center[0] - B[0], center[1] - B[1])
+            print(f"  Verification - Distance to A: {dist_A:.6f}, to B: {dist_B:.6f}")
+            return Polygon(
+                layer=arc_layer,
+                uuid=str(uuid4()),
+                fill=Fill(False),
+                width=Width(stroke_width),
+                grab_area=GrabArea(False),
+                vertices=[
+                    Vertex(position=Position(x1, y1), angle=Angle(math.degrees(angle))),
+                    Vertex(position=Position(x2, y2), angle=Angle(0)),
+                ],
+            )
 
         except Exception as e:
             print(f"Error parsing ARC string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_solidregion(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Polygon]:
+    def _parse_solidregion(self, parts: List[str]) -> Optional[Polygon]:
         # SOLIDREGION~layerId~~Path~Type~RepID~~~~locked
         # Example: SOLIDREGION~100~~M390...Z~solid~rep3~~~~0
         # Indices:    0          1   2  3    4    5      6 7 8 9
         try:
             layer_id_str = parts[1]
             path_str = parts[3]
-            # type_str = parts[4] # e.g., "solid"
-
+            solid = parts[4] != ""  # e.g., "solid"
             poly_layer = self.layer_map.get(layer_id_str)
             if not poly_layer:
                 print(
@@ -568,160 +824,210 @@ class EasyEDAParser:
                 )
                 return None
 
-            vertices = parse_svg_path_to_points(
-                path_str, offset_x, offset_y, self.unit_scale
-            )
+            vertices = self.parse_svg_path_to_points(path_str)
             if not vertices or len(vertices) < 3:
-                print(
+                logger.error(
                     f"Warning: Not enough vertices for SOLIDREGION '{path_str}'. Skipping."
                 )
                 return None
 
-            return Polygon(
-                vertices=vertices,
-                stroke_width=0,  # Solid regions are filled, stroke usually not relevant or minimal
-                filled=True,
+            polygon = Polygon(
+                uuid=str(uuid4()),
                 layer=poly_layer,
+                width=Width(0),
+                fill=Fill(
+                    True
+                    if all([poly_layer.layer not in self.unfilled_layers, solid])
+                    else False
+                ),
+                grab_area=GrabArea(False),
             )
+            for vertex in vertices:
+                polygon.add_vertex(Vertex(position=vertex, angle=Angle(0)))
+
+            return polygon
         except Exception as e:
-            print(f"Error parsing SOLIDREGION string '{'~'.join(parts)}': {e}")
+            logger.error(f"Error parsing SOLIDREGION string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_text_primitive(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Text]:
-        # TEXT~type~centerX~centerY~strokeWidth~rotation~mirror~layerId~net~fontSize~display~text~path~id~locked
-        # type: N (name), P (prefix/value)
-        # mirror: 0 or 1
-        # display: "FILTER" "ALWAYS" etc. or empty string for visible
-        try:
-            # text_type_indicator = parts[1] # e.g. "REF", "VAL" if available
-            center_x = float(parts[2]) * self.unit_scale - offset_x
-            center_y = float(parts[3]) * self.unit_scale - offset_y
-            stroke_width = float(parts[4]) * self.unit_scale
-            rotation = float(parts[5]) if parts[5] else 0.0
-            mirrored = parts[6] == "1"
-            layer_id_str = parts[7]
-            # net = parts[8]
-            font_height = (
-                float(parts[9]) * self.unit_scale
-            )  # EasyEDA font_size is height
-            # display_flag = parts[10]
-            text_content = parts[11]
+    def _add_name_value_labels(
+        self, height: float, polygons: List[Polygon]
+    ) -> Tuple[StrokeText]:
+        OFFSET = 1.2
+        ymax, ymin = (0, 0)
+        for polygon in polygons:
+            if polygon.layer.layer == Layer("top_package_outlines").layer:
+                for vertex in polygon.vertices:
+                    ymax = vertex.position.y if vertex.position.y > ymax else ymax
+                    ymin = vertex.position.y if vertex.position.y < ymin else ymin
 
-            text_layer = self.layer_map.get(layer_id_str)
-            if not text_layer:
-                print(
-                    f"Warning: Unknown layer ID '{layer_id_str}' for TEXT '{text_content}'. Skipping."
-                )
-                return None
+        name = StrokeText(
+            uuid=str(uuid4()),
+            layer=Layer("top_names"),
+            height=Height(1.0),
+            stroke_width=StrokeWidth(0.2),
+            letter_spacing=LetterSpacing.AUTO,
+            line_spacing=LineSpacing.AUTO,
+            align=Align("center bottom"),
+            position=Position(0.0, ymax + OFFSET),
+            rotation=Rotation(0.0),
+            auto_rotate=AutoRotate(True),
+            mirror=Mirror(False),
+            value=Value("{{NAME}}"),
+        )
 
-            return Text(
-                text=text_content,
-                position=Point(x=center_x, y=center_y),
-                font_height=font_height,
-                stroke_width=stroke_width,
-                rotation=rotation,
-                mirrored=mirrored,
-                visible=True,  # TODO: Parse display_flag for visibility
-                layer=text_layer,
-                horizontal_align=TextAlignHorizontal.CENTER,  # EasyEDA text anchor often center
-                vertical_align=TextAlignVertical.MIDDLE,  # EasyEDA text anchor often middle
-            )
-        except Exception as e:
-            print(f"Error parsing TEXT string '{'~'.join(parts)}': {e}")
-            return None
+        value = StrokeText(
+            uuid=str(uuid4()),
+            layer=Layer("top_values"),
+            height=Height(1.0),
+            stroke_width=StrokeWidth(0.2),
+            letter_spacing=LetterSpacing.AUTO,
+            line_spacing=LineSpacing.AUTO,
+            align=Align("center top"),
+            position=Position(0.0, ymin - OFFSET),
+            rotation=Rotation(0.0),
+            auto_rotate=AutoRotate(True),
+            mirror=Mirror(False),
+            value=Value("{{VALUE}}"),
+        )
+        return (name, value)
 
-    def _parse_hole_primitive(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Drill]:
+    # def _parse_text_primitive(
+    #     self, parts: List[str]
+    # ) -> Optional[Text]:
+    #     # TEXT~type~centerX~centerY~strokeWidth~rotation~mirror~layerId~net~fontSize~display~text~path~id~locked
+    #     # type: N (name), P (prefix/value)
+    #     # mirror: 0 or 1
+    #     # display: "FILTER" "ALWAYS" etc. or empty string for visible
+    #     try:
+    #         # text_type_indicator = parts[1] # e.g. "REF", "VAL" if available
+    #         center_x = float(parts[2]) * UNIT_SCALE- offset_x
+    #         center_y = float(parts[3]) * UNIT_SCALE- offset_y
+    #         stroke_width = float(parts[4]) * UNIT_SCALE
+    #         rotation = float(parts[5]) if parts[5] else 0.0
+    #         mirrored = parts[6] == "1"
+    #         layer_id_str = parts[7]
+    #         # net = parts[8]
+    #         font_height = (
+    #             float(parts[9]) * UNIT_SCALE
+    #         )  # EasyEDA font_size is height
+    #         # display_flag = parts[10]
+    #         text_content = parts[11]
+
+    #         text_layer = self.layer_map.get(layer_id_str)
+    #         if not text_layer:
+    #             print(
+    #                 f"Warning: Unknown layer ID '{layer_id_str}' for TEXT '{text_content}'. Skipping."
+    #             )
+    #             return None
+
+    #         return Text(
+    #             text=text_content,
+    #             position=Position(x=center_x, y=center_y),
+    #             font_height=font_height,
+    #             stroke_width=stroke_width,
+    #             rotation=rotation,
+    #             mirrored=mirrored,
+    #             visible=True,  # TODO: Parse display_flag for visibility
+    #             layer=text_layer,
+    #             horizontal_align=TextAlignHorizontal.CENTER,  # EasyEDA text anchor often center
+    #             vertical_align=TextAlignVertical.MIDDLE,  # EasyEDA text anchor often middle
+    #         )
+    #     except Exception as e:
+    #         print(f"Error parsing TEXT string '{'~'.join(parts)}': {e}")
+    #         return None
+
+    def _parse_hole_primitive(self, parts: List[str]) -> Optional[Hole]:
         # HOLE~X~Y~Radius~TRACKID~NET~ID~LOCKED
         # Example from parameters_easyeda.py: EeFootprintHole
         # center_x, center_y, radius, id, is_locked
         try:
-            center_x = float(parts[1]) * self.unit_scale - offset_x
-            center_y = float(parts[2]) * self.unit_scale - offset_y
-            radius = float(parts[3]) * self.unit_scale
+            center_x = self.xpos(parts[1])
+            center_y = self.ypos(parts[2])
+            radius = float(parts[3]) * UNIT_SCALE
 
-            return Drill(
-                position=Point(x=center_x, y=center_y),
-                shape=DrillShape.ROUND,
-                diameter=radius * 2,
-                plated=False,  # Standalone HOLE objects in EasyEDA are typically NPTH
-                layer=LayerRef(type=LayerType.MULTI_LAYER),  # Holes span layers
+            hole = Hole(
+                uuid=str(uuid4()),
+                diameter=DrillDiameter(radius * 2),
+                stop_mask=StopMaskConfig(StopMaskConfig.AUTO),
+                vertices=[
+                    Vertex(position=Position(center_x, center_y), angle=Angle(0))
+                ],
             )
+
+            return hole
         except Exception as e:
-            print(f"Error parsing HOLE string '{'~'.join(parts)}': {e}")
+            logger.error(f"Error parsing HOLE string '{'~'.join(parts)}': {e}")
             return None
 
-    def _parse_rect_primitive(
-        self, parts: List[str], offset_x: float, offset_y: float
-    ) -> Optional[Rectangle]:
-        # RECT~X~Y~Width~Height~strokeWidth~ID~LayerID~Locked
-        # (from parameters_easyeda.py EeFootprintRectangle)
-        try:
-            x = float(parts[1]) * self.unit_scale - offset_x  # Top-left X
-            y = float(parts[2]) * self.unit_scale - offset_y  # Top-left Y
-            width = float(parts[3]) * self.unit_scale
-            height = float(parts[4]) * self.unit_scale
-            stroke_width = float(parts[5]) * self.unit_scale
-            layer_id_str = parts[7]
+    # def _parse_rect_primitive(
+    #     self, parts: List[str]
+    # ) -> Optional[Rectangle]:
+    #     # RECT~X~Y~Width~Height~strokeWidth~ID~LayerID~Locked
+    #     # (from parameters_easyeda.py EeFootprintRectangle)
+    #     try:
+    #         x = float(parts[1]) * UNIT_SCALE- offset_x  # Top-left X
+    #         y = float(parts[2]) * UNIT_SCALE- offset_y  # Top-left Y
+    #         width = float(parts[3]) * UNIT_SCALE
+    #         height = float(parts[4]) * UNIT_SCALE
+    #         stroke_width = float(parts[5]) * UNIT_SCALE
+    #         layer_id_str = parts[7]
 
-            rect_layer = self.layer_map.get(layer_id_str)
-            if not rect_layer:
-                print(f"Warning: Unknown layer ID '{layer_id_str}' for RECT. Skipping.")
-                return None
+    #         rect_layer = self.layer_map.get(layer_id_str)
+    #         if not rect_layer:
+    #             print(f"Warning: Unknown layer ID '{layer_id_str}' for RECT. Skipping.")
+    #             return None
 
-            return Rectangle(
-                position=Point(
-                    x=x + width / 2, y=y + height / 2
-                ),  # CDM uses center point
-                width=width,
-                height=height,
-                stroke_width=stroke_width,
-                filled=False,  # EasyEDA rects are typically outlines
-                layer=rect_layer,
-            )
-        except Exception as e:
-            print(f"Error parsing RECT string '{'~'.join(parts)}': {e}")
-            return None
+    #         return Rectangle(
+    #             position=Position(
+    #                 x=x + width / 2, y=y + height / 2
+    #             ),  # CDM uses center point
+    #             width=width,
+    #             height=height,
+    #             stroke_width=stroke_width,
+    #             filled=False,  # EasyEDA rects are typically outlines
+    #             layer=rect_layer,
+    #         )
+    #     except Exception as e:
+    #         print(f"Error parsing RECT string '{'~'.join(parts)}': {e}")
+    #         return None
 
-    def _parse_svgnode(self, parts: List[str]) -> Optional[Model3D]:
+    def _parse_svgnode(self, parts: List[str]) -> Optional[Model3DWithOrigin]:
         svg_node = json.loads(parts[1])
         attrs_3d = svg_node.get("attrs", {})
         if attrs_3d.get("uuid"):
-            uuid_3d = UUID(attrs_3d["uuid"])
-            # attrs': {'c_etype': 'outline3D',
-            #    'c_height': '11.0236',
-            #    'c_origin': '3999.5011,2998',
-            #    'c_rotation': '0,0,0',
-            #    'c_width': '11.4173',
-            #    'id': 'g1_outline',
-            #    'layerid': '19',
-            #    'title': 'SOT-25-5_L2.9-W1.6-P0.95-LS2.8-BL',
-            #    'transform': 'scale(1) translate(0, 0)',
-            #    'uuid': '6d166d1d6c064b99aa79465714e989c1',
-            # TODO handle title, rotation, and transform
-            model = Model3D(uuid=uuid_3d)
-            return model
-        return None
+            uuid_3d = str(UUID(attrs_3d["uuid"]))
+            origin = attrs_3d["c_origin"].split(",")
+            origin_x = self.xpos(origin[0])
+            origin_y = self.ypos(origin[1])
+            position_3d = Position3D(origin_x, origin_y, 0)  # TODO handle Z height?
+            rotation = Rotation3D(
+                *[float(k) for k in attrs_3d["c_rotation"].split(",")]
+            )
+            model = Footprint3DModel(uuid=uuid_3d)
+            return Model3DWithOrigin(
+                model=model, position_3d=position_3d, rotation_3d=rotation
+            )
+        return None, None
 
-    def parse_easyeda_json(self, easyeda_data: Dict[str, Any]) -> Optional[Footprint]:
+    def parse_easyeda_json(
+        self, easyeda_data: Dict[str, Any]
+    ) -> Tuple[Optional[Package], float, float]:
         if "packageDetail" not in easyeda_data:
-            print("Error: 'packageDetail' not found in EasyEDA data.")
+            logger.error("Error: 'packageDetail' not found in EasyEDA data.")
             return None
 
         package_detail = easyeda_data["packageDetail"]
+
         if "dataStr" not in package_detail or not package_detail["dataStr"]:
-            print("Error: 'dataStr' for footprint not found or is empty.")
+            logger.error("Error: 'dataStr' for footprint not found or is empty.")
             # This can happen if the component only has a symbol but no footprint
             return None  # Or return an empty Footprint object if that's desired
 
         data_str = package_detail["dataStr"]
         head = data_str.get("head", {})
-        height = data_str.get("BBox", {}).get("height", 0) * self.unit_scale
-        width = data_str.get("BBox", {}).get("width", 0) * self.unit_scale
-
+        height = data_str.get("BBox", {}).get("height", 0) * UNIT_SCALE
+        width = data_str.get("BBox", {}).get("width", 0) * UNIT_SCALE
         self._parse_layer_definitions(data_str.get("layers", []))
 
         # --- Metadata ---
@@ -730,8 +1036,8 @@ class EasyEDAParser:
             or head.get("name")
             or package_detail.get("title", "UnknownFootprint")
         )
-        fp_uuid_str = head.get("uuid")
-        fp_uuid = UUID(fp_uuid_str) if fp_uuid_str else None
+        pkg_uuid = str(UUID(head["uuid"]))
+        fp_uuid = str(uuid4())
 
         author = head.get("c_para", {}).get("Contributor")
 
@@ -740,15 +1046,17 @@ class EasyEDAParser:
         if utime:
             try:
                 created_at = datetime.fromtimestamp(int(utime))
+                created_string: Created = created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
             except ValueError:
                 pass
 
         generated_by = f"EasyEDA Editor {head.get('editorVersion', 'unknown')}"
 
-        keywords = easyeda_data.get("tags", [])
-
+        keywords = (", ").join(easyeda_data.get("tags", []))
+        part_para = easyeda_data["dataStr"]["head"]["c_para"]
         custom_attrs = {}
         c_para = head.get("c_para", {})
+        c_para.update(part_para)
         if "Manufacturer" in c_para:
             custom_attrs["Manufacturer"] = c_para["Manufacturer"]
         if "Manufacturer Part" in c_para:
@@ -760,118 +1068,96 @@ class EasyEDAParser:
 
         offset_x_easyeda_units = head.get("x", 0.0)  # Keep original EasyEDA units
         offset_y_easyeda_units = head.get("y", 0.0)  # Keep original EasyEDA units
-        offset_x = (
-            offset_x_easyeda_units * self.unit_scale
+        self.offset_x = (
+            offset_x_easyeda_units * UNIT_SCALE
         )  # Convert to mm for pad positioning
-        offset_y = (
-            offset_y_easyeda_units * self.unit_scale
+        self.offset_y = (
+            offset_y_easyeda_units * UNIT_SCALE
         )  # Convert to mm for pad positioning
-        print(f"Offset: {offset_x}, {offset_y}")
-
+        print(f"Offset: {self.offset_x}, {self.offset_y}")
         fp = Footprint(
-            name=footprint_name,
             uuid=fp_uuid,
-            author=author,
-            created_at=created_at,
-            generated_by=generated_by,
-            keywords=keywords,
-            description=easyeda_data.get("description"),
-            custom_attributes=custom_attrs,
-            pads=[],
-            graphics=[],
-            height=height,
-            width=width,
-            source_offset_x=offset_x_easyeda_units,  # Store original source units
-            source_offset_y=offset_y_easyeda_units,  # Store original source units
+            name=Name("default"),
+            description=Description(""),
+            position_3d=Position3D.zero(),
+            rotation_3d=Rotation3D.zero(),
+        )
+
+        # custom_attributes=custom_attrs,
+        # height=height,
+        # width=width,
+        # source_offset_x=offset_x_easyeda_units,  # Store original source units
+        # source_offset_y=offset_y_easyeda_units,  # Store original source units
+
+        package = Package(
+            uuid=pkg_uuid,
+            name=Name(footprint_name),
+            description=Description(
+                easyeda_data.get("description") + (json.dumps(c_para))
+            ),
+            created=Created(created_string),
+            deprecated=Deprecated(False),
+            categories=[Category("1d2630f1-c375-49f0-a0dc-2446735d82f4")],
+            assembly_type=AssemblyType.AUTO,
+            keywords=Keywords(keywords),
+            author=Author(author),
+            version=Version(DEFAULT_VERSION),
+            generated_by=GeneratedBy(generated_by),
         )
 
         # --- Shapes ---
+        # Things you can add to a Footprint
+        #   pads=[],
+        #   models_3d=[],
+        #   polygons=[],
+        #   circles=[],
+        #   texts=[],
+        #   holes=[],
+        #   zones=[],
         for shape_str in data_str.get("shape", []):
             parts = shape_str.split("~")
             shape_type = parts[0]
 
-            element: Optional[Union[Pad, GraphicElement]] = None
-
             if shape_type == "PAD":
-                element = self._parse_pad(parts, offset_x, offset_y)
+                footprint_pad, package_pad = self._parse_pad(parts)
+                fp.add_pad(footprint_pad)
+                package.add_pad(package_pad)
             elif shape_type == "TRACK":
-                element = self._parse_track(parts, offset_x, offset_y)
+                polygon = self._parse_track(parts)
+                fp.add_polygon(polygon)
             elif shape_type == "CIRCLE":
-                element = self._parse_circle_primitive(parts, offset_x, offset_y)
+                circle = self._parse_circle_primitive(parts)
+                fp.add_circle(circle)
             elif shape_type == "ARC":
-                element = self._parse_arc_primitive(
-                    parts, offset_x, offset_y
-                )  # Needs robust SVG arc parsing
+                circle = self._parse_arc_primitive(parts)
+                fp.add_circle(circle)
+                # Needs robust SVG arc parsing
             elif shape_type == "SOLIDREGION":
-                element = self._parse_solidregion(parts, offset_x, offset_y)
-            elif shape_type == "TEXT":
-                element = self._parse_text_primitive(parts, offset_x, offset_y)
+                polygon = self._parse_solidregion(parts)
+                fp.add_polygon(polygon)
+            # elif shape_type == "TEXT":
+            #     element = self._parse_text_primitive(parts, offset_x, offset_y)
             elif shape_type == "HOLE":  # From prior art, implies standalone NPTH
-                element = self._parse_hole_primitive(parts, offset_x, offset_y)
-            elif shape_type == "RECT":  # From prior art, non-pad rectangle
-                element = self._parse_rect_primitive(parts, offset_x, offset_y)
+                hole = self._parse_hole_primitive(parts)
+                fp.add_hole(hole)
+            # elif shape_type == "RECT":  # From prior art, non-pad rectangle
+            #     element = self._parse_rect_primitive(parts, offset_x, offset_y)
             elif shape_type == "SVGNODE":
-                fp.model_3d = self._parse_svgnode(parts)
+                model, position_3d, rotation_3d = self._parse_svgnode(parts)
+                fp.add_3d_model(model)
+                package.add_3d_model(
+                    Package3DModel(uuid=model.uuid, name=Name("EasyEDA"))
+                )
+                fp.position_3d = position_3d
+                fp.rotation_3d = rotation_3d
             # elif shape_type == "VIA": # VIA specific parsing if needed
             #     element = self._parse_via_primitive(parts, offset_x, offset_y)
             else:
                 print(f"Notice: Unhandled EasyEDA shape type: {shape_type}")
-                raise Exception(f"Unhandled shape type: {type(element)}")
 
-            if element:
-                if isinstance(element, Pad):
-                    fp.pads.append(element)
-                elif isinstance(element, GraphicElement):  # Check against the Union
-                    fp.graphics.append(element)
-                else:
-                    raise Exception(f"Unhandled element type: {type(element)}")
-
-        return fp
-
-    def calculate_footprint_alignment(
-        self, footprint: Footprint, svg_path: str, png_path: str
-    ):
-        """
-        Calculate alignment for a footprint using data stored in the footprint object.
-
-        Args:
-            footprint: The parsed Footprint object (with source_offset_x/y)
-            svg_path: Path to SVG file (for viewBox)
-            png_path: Path to PNG file (for pixel dimensions)
-
-        Returns:
-            FootprintAlignment object
-        """
-        from models.footprint import AlignmentCalculator
-        from svg_utils import (
-            parse_svg_viewbox,
-            get_png_dimensions,
-            create_coordinate_mapper,
-        )
-
-        if footprint.source_offset_x is None or footprint.source_offset_y is None:
-            raise ValueError(
-                "Footprint missing source offset data - was it parsed correctly?"
-            )
-
-        # Get SVG and PNG information using shared utilities
-        svg_info = parse_svg_viewbox(svg_path)
-        png_info = get_png_dimensions(png_path)
-
-        # Create coordinate mapper using shared utility
-        coordinate_mapper = create_coordinate_mapper(
-            svg_info=svg_info,
-            png_info=png_info,
-            source_offset_x=footprint.source_offset_x,
-            source_offset_y=footprint.source_offset_y,
-            unit_scale=self.unit_scale,
-        )
-
-        # Use the generic alignment calculator
-        calculator = AlignmentCalculator()
-        alignment = calculator.calculate_alignment(
-            footprint=footprint,
-            coordinate_mapper=coordinate_mapper,
-        )
-
-        return alignment
+        if fp.pads:
+            texts = self._add_name_value_labels(height, fp.polygons)
+            for text in texts:
+                fp.add_text(text)
+        package.add_footprint(fp)
+        return package, self.offset_x, self.offset_y

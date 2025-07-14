@@ -3,10 +3,11 @@ name = "webparts-librepcb"
 version = "0.1.0"
 description = "Online parts converter for LibrePCB"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "cairosvg~=2.8.2",
     "first~=2.0.2",
+    "librepcb-parts-generator",
     "pydantic~=2.0",
     "pyside6~=6.9.1",
     "requests~=2.0",
@@ -22,6 +23,13 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = "."
-markers = [
-    "ui: marks tests as UI tests",
+markers = ["ui: marks tests as UI tests"]
+
+[tool.uv]
+# Require that the package is available for macOS ARM
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
+
+[tool.uv.sources]
+librepcb-parts-generator = { path = "/Users/fred/librepcb_parts_generator", editable = true }

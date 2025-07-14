@@ -1,27 +1,22 @@
 import logging
 import shutil
-import tempfile
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from adapters.easyeda.easyeda_footprint import EasyEDAParser
-from adapters.librepcb.librepcb_footprint import (
-    LibrePCBFootprintSerializer,
-    footprint_alignment_to_librepcb_settings,
-)
+from librepcb_parts_generator.entities.package import Package
+
+from adapters.easyeda.easyeda_footprint import EasyEDAFootprintParser
 from constants import BACKGROUNDS_DIR, WebPartsFilename
-from models.footprint import Footprint
+from models.elements import LibrePCBElement
 from models.library_part import LibraryPart
 from workers.element_renderer import render_and_check_element
-from models.elements import LibrePCBElement
-
 
 logger = logging.getLogger(__name__)
 
 
 def process_footprint_complete(
     raw_cad_data: Dict[str, Any], library_part: LibraryPart, pkg_dir: Path
-) -> Tuple[bool, Optional[Footprint]]:
+) -> Tuple[bool, Optional[Package]]:
     """
     Complete footprint processing pipeline.
 
@@ -33,30 +28,32 @@ def process_footprint_complete(
     5. Hydrating the part's name from the generated .lp file.
     """
     # Step 1: Generate the footprint
-    logger.info("--- Starting Footprint Generation ---")
-    success, parsed_footprint = _generate_footprint_file(raw_cad_data, str(pkg_dir))
+    logger.info("\n--- Starting Package Generation ---")
+    success, parsed_package, offset_x, offset_y = _generate_footprint_file(
+        raw_cad_data, str(pkg_dir)
+    )
 
-    if not success or not parsed_footprint:
-        logger.error("--- Footprint Generation Failed ---")
+    if not success or not parsed_package:
+        logger.error("--- Package Generation Failed ---")
         return False, None
 
-    logger.info("--- Footprint Generation Succeeded ---")
+    logger.info("--- Package Generation Succeeded ---")
 
     # Step 2: Render, check, and update manifest
     _render_check_and_update_manifest(library_part, pkg_dir)
 
     # Step 3: Calculate and save alignment data to backgrounds cache
-    _calculate_and_save_alignment(parsed_footprint, pkg_dir)
+    _calculate_and_save_alignment(parsed_package, pkg_dir, offset_x, offset_y)
 
     # Step 4: Hydrate metadata
     _hydrate_footprint_metadata(library_part, pkg_dir)
 
-    return True, parsed_footprint
+    return True, parsed_package
 
 
 def _generate_footprint_file(
     raw_cad_data: Dict[str, Any], pkg_dir_str: str
-) -> Tuple[bool, Optional[Footprint]]:
+) -> Tuple[bool, Optional[Package], float, float]:
     """
     Parses raw EasyEDA data and serializes it to a LibrePCB S-expression file.
     """
@@ -64,25 +61,27 @@ def _generate_footprint_file(
         logger.warning(
             "No packageDetail found in raw CAD data. Skipping footprint generation."
         )
-        return False, None
+        return False, None, 0.0, 0.0
 
     try:
-        parser = EasyEDAParser()
-        footprint = parser.parse_easyeda_json(raw_cad_data)
-        if not footprint:
+        parser = EasyEDAFootprintParser()
+        package, offset_x, offset_y = parser.parse_easyeda_json(raw_cad_data)
+        if not package:
             logger.error("Failed to parse footprint data from EasyEDA JSON.")
-            return False, None
+            return False, None, 0.0, 0.0
 
-        serializer = LibrePCBFootprintSerializer(invert_y=True)
-        serializer.serialize_to_file(footprint, pkg_dir_str)
+        # LibrePCB-Parts-Generator's serializer appends the UUID, but we've already got it
+
+        parent_dir = Path(*Path(pkg_dir_str).parts[0:-1])
+        package.serialize(parent_dir)
         logger.info(f"Successfully serialized footprint to {pkg_dir_str}/package.lp")
 
-        return True, footprint
+        return True, package, offset_x, offset_y
     except Exception as e:
         logger.error(
             f"An error occurred during footprint generation: {e}", exc_info=True
         )
-        return False, None
+        return False, None, 0.0, 0.0
 
 
 def _render_check_and_update_manifest(library_part: LibraryPart, pkg_dir: Path):
@@ -93,7 +92,7 @@ def _render_check_and_update_manifest(library_part: LibraryPart, pkg_dir: Path):
         # Note: render_and_check_element uses the LibraryPart object, which is why it's passed down.
         # It needs the UUIDs to construct paths internally.
         _, issues = render_and_check_element(library_part, LibrePCBElement.PACKAGE)
-        logger.info("Footprint rendering and checking completed.")
+        logger.info("Package rendering and checking completed.")
 
         from library_manager import LibraryManager
 
@@ -106,42 +105,73 @@ def _render_check_and_update_manifest(library_part: LibraryPart, pkg_dir: Path):
         logger.error(f"Failed to render, check, or update manifest: {e}", exc_info=True)
 
 
-def _calculate_and_save_alignment(footprint: Footprint, pkg_dir: Path) -> None:
+def _calculate_and_save_alignment(
+    package: Package, pkg_dir: Path, offset_x: float, offset_y: float
+) -> None:
     """
     Calculate alignment and save settings/image to the backgrounds directory.
     """
+    from adapters.librepcb.librepcb_footprint import (
+        footprint_alignment_to_librepcb_settings,
+    )
+    from models.alignment import AlignmentCalculator
+    from svg_utils import (
+        create_coordinate_mapper,
+        get_png_dimensions,
+        overlay_alignment_crosshairs,
+        parse_svg_viewbox,
+    )
+    from librepcb_parts_generator.entities.common import Name
+
     svg_path = pkg_dir / WebPartsFilename.FOOTPRINT_SVG.value
     png_path = pkg_dir / WebPartsFilename.FOOTPRINT_PNG.value
 
     if not svg_path.exists() or not png_path.exists():
-        logger.warning(
-            f"Missing SVG or PNG files in {pkg_dir} for alignment, skipping."
-        )
+        logger.warning(f"Missing SVG or PNG for alignment in {pkg_dir}, skipping.")
         return
 
-    parser = EasyEDAParser()
-    alignment = parser.calculate_footprint_alignment(
-        footprint=footprint, svg_path=str(svg_path), png_path=str(png_path)
+    # Find the top package outline polygon from the default footprint
+    footprint = next((fp for fp in package.footprints if fp.name.value == "default"), None)
+    if not footprint:
+        logger.warning("Default footprint not found in package, skipping alignment.")
+        return
+
+    outline_polygon = None
+    for polygon in footprint.polygons:
+        if polygon.layer.layer == "top_package_outlines":
+            outline_polygon = polygon
+            break
+
+    if not outline_polygon:
+        logger.warning("No 'top_package_outlines' polygon found, skipping alignment.")
+        return
+
+    # Set up the coordinate mapper
+    viewbox = parse_svg_viewbox(str(svg_path))
+    png_dims = get_png_dimensions(str(png_path))
+    UNIT_SCALE = 0.254  # Must match the parser's scale
+
+    coordinate_mapper = create_coordinate_mapper(
+        svg_info=viewbox,
+        png_info=png_dims,
+        source_offset_x=offset_x / UNIT_SCALE,  # Convert offset back to source units
+        source_offset_y=offset_y / UNIT_SCALE,
+        unit_scale=UNIT_SCALE,
+    )
+
+    # Calculate alignment using the new polygon-based calculator
+    calculator = AlignmentCalculator()
+    alignment = calculator.calculate_alignment_from_polygon(
+        polygon=outline_polygon, coordinate_mapper=coordinate_mapper
     )
 
     if alignment:
-        from svg_utils import overlay_alignment_crosshairs
-        from adapters.librepcb.librepcb_footprint import (
-            footprint_alignment_to_librepcb_settings,
-        )
-
-        # Overlay crosshairs directly onto the final PNG
+        # Overlay crosshairs and save files
         overlay_alignment_crosshairs(str(png_path), alignment)
-
-        # Create alignment settings content
         alignment_settings = footprint_alignment_to_librepcb_settings(
             alignment, enabled=True
         )
-
-        # Save both to the LibrePCB backgrounds directory
-        _copy_to_backgrounds_directory(
-            footprint.uuid, str(png_path), alignment_settings
-        )
+        _copy_to_backgrounds_directory(package.uuid, str(png_path), alignment_settings)
     else:
         logger.warning(
             "Could not calculate alignment data, skipping background image generation."

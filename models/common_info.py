@@ -2,12 +2,13 @@
 Defines common, shared Pydantic models used by both SearchResult and LibraryPart.
 """
 
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel
 
 from constants import WebPartsFilename
+
 from .elements import LibrePCBElement
 
 
@@ -48,6 +49,7 @@ class FootprintInfo(BaseModel):
     uuid: Optional[str] = None
     name: Optional[str] = None
     package_type: Optional[str] = None
+    model_3d_uuid: Optional[str] = None
 
     @property
     def dir_path(self) -> Optional[Path]:
@@ -72,6 +74,12 @@ class FootprintInfo(BaseModel):
         if not self.dir_path:
             return None
         return self.dir_path / WebPartsFilename.RENDERED_PNG.value
+
+    @property
+    def model_3d_path(self) -> Optional[Path]:
+        if not self.model_3d_uuid:
+            return None
+        return LibrePCBElement.PACKAGE.dir / f"{self.model_3d_uuid}.step"
 
     @property
     def alignment_settings_path(self) -> Optional[Path]:

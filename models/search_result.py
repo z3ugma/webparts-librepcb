@@ -2,9 +2,11 @@
 Defines the canonical data model for a component search result.
 """
 
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from pydantic import BaseModel, Field
-from .common_info import ImageInfo, SymbolInfo, FootprintInfo, ComponentInfo, DeviceInfo
+
+from .common_info import ComponentInfo, DeviceInfo, FootprintInfo, ImageInfo, SymbolInfo
 
 
 class SearchResult(BaseModel):
@@ -38,6 +40,7 @@ class SearchResult(BaseModel):
     symbol_svg_cache_path: Optional[str] = Field(None, exclude=True)
     footprint_png_cache_path: Optional[str] = Field(None, exclude=True)
     footprint_svg_cache_path: Optional[str] = Field(None, exclude=True)
+    footprint_model_3d_step_cache_path: Optional[str] = Field(None, exclude=True)
 
     # --- Raw Data (for processing, not for saving) ---
     raw_cad_data: Optional[Dict] = Field(None, exclude=True)

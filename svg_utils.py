@@ -258,11 +258,9 @@ def overlay_alignment_crosshairs(
             [(x - dot_size, y - dot_size), (x + dot_size, y + dot_size)], fill=color
         )
 
-        # Add label with pad number and coordinates
-        pad_name = ref.pad_number.split("_")[0]  # Extract pad number without corner
+        # Add label with vertex name and coordinates
         label_offset = 25
-        # Include both pixel and MM coordinates like the test script had
-        label_text = f"{pad_name}\n({ref.source_x:.0f},{ref.source_y:.0f})\n({ref.target_x:.3f},{ref.target_y:.3f})"
+        label_text = f"{ref.label}\n({ref.source_x:.0f},{ref.source_y:.0f})\n({ref.target_x:.3f},{ref.target_y:.3f})"
         draw.text((x + label_offset, y - label_offset), label_text, fill=color)
 
     # Save the modified image
