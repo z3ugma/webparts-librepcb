@@ -9,7 +9,7 @@ from typing import List, Tuple
 
 from first import first
 
-from models.footprint import Footprint
+from librepcb_parts_generator.entities.package import Footprint
 from models.symbol import Symbol
 
 # Local imports

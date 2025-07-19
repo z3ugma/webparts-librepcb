@@ -6,7 +6,7 @@ from adapters.easyeda.easyeda_footprint import EasyEDAFootprintParser
 from adapters.easyeda.easyeda_symbol import EasyEDASymbolParser
 from adapters.librepcb.librepcb_device import LibrePCBDeviceSerializer
 from models.elements import LibrePCBElement
-from models.footprint import Footprint
+from librepcb_parts_generator.entities.package import Footprint
 from models.library_part import LibraryPart
 from models.symbol import Symbol
 from workers.element_renderer import render_and_check_element

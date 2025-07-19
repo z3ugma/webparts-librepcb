@@ -76,7 +76,9 @@ class LibraryManager(QObject):
         Adds a new part to the library based on a search result.
         """
         try:
+            from workers.element_renderer import render_and_check_element
             from workers.footprint_converter import process_footprint_complete
+            from workers.symbol_converter import generate_symbol
 
             logger.info(f"Starting import of '{search_result.lcsc_id}'...")
             library_part = self._map_search_result_to_library_part(search_result)
@@ -109,22 +111,22 @@ class LibraryManager(QObject):
                 copy.deepcopy(search_result.raw_cad_data), library_part, part_pkg_dir
             )
 
-            # # --- Process Symbol (Generate, Render, Check) ---
-            # logger.info("--- Starting Symbol Generation ---")
-            # if generate_symbol(
-            #     copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
-            # ):
-            #     logger.info(
-            #         "--- Symbol Generation Succeeded, now rendering and checking ---"
-            #     )
-            #     _, issues = render_and_check_element(
-            #         library_part, LibrePCBElement.SYMBOL
-            #     )
-            #     self._update_element_manifest(
-            #         LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
-            #     )
-            # else:
-            #     logger.error("--- Symbol Generation Failed ---")
+            # --- Process Symbol (Generate, Render, Check) ---
+            logger.info("--- Starting Symbol Generation ---")
+            if generate_symbol(
+                copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
+            ):
+                logger.info(
+                    "--- Symbol Generation Succeeded, now rendering and checking ---"
+                )
+                _, issues = render_and_check_element(
+                    library_part, LibrePCBElement.SYMBOL
+                )
+                self._update_element_manifest(
+                    LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
+                )
+            else:
+                logger.error("--- Symbol Generation Failed ---")
 
             # # --- Process Component (Generate, Render, Check) ---
             # logger.info("--- Starting Component Generation ---")
