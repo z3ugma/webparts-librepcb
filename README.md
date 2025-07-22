@@ -63,90 +63,55 @@ This separation ensures that your primary library remains a clean, trusted sourc
 
 # Usage
 
+This will search for and download the EasyEDA data, convert it to the canonical data model, and serialize it into the `.lp` format required by LibrePCB. The output is placed in the LibrePCB library noted in constants.py
+
 It is recommended to have [`uv`](https://docs.astral.sh/uv/) installed for managing Python environments and running scripts.
 
-## Downloading EasyEDA files
-
-This will download the necessary JSON and SVG files into the `downloads/` directory.
-
 ```bash
-# To Download the relevant EasyEDA files
-# Modify app.py with the LCSC ID of interest
-and then run:
-uv run app.py
-2025-06-04 08:36:32,418 - adapters.easyeda.easyeda_api - INFO - 200 https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5
-2025-06-04 08:36:32,726 - adapters.easyeda.easyeda_api - INFO - 200 https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}
-Found 3D Model STEP file, saving...
-2025-06-04 08:36:32,960 - adapters.easyeda.easyeda_api - INFO - 200 https://easyeda.com/api/products/{lcsc_id}/svgs
-2025-06-04 08:36:32,967 - svg_add_pad_labels - INFO - Created <g id='pcbPadNumbers'>
-2025-06-04 08:36:32,967 - svg_add_pad_labels - INFO - Processed 57 pad elements.
-2025-06-04 08:36:32,975 - svg_add_pad_labels - INFO - Successfully wrote modified SVG to 'downloads/C2040_1.svg.text.svg'
-
-downloads % tree
-.
-├── C2040_0.svg
-├── C2040_1.svg
-├── C2040_1.svg.text.svg
-├── C2040_svgs.json
-├── C2040.json
-```
-
-## Converting to LibrePCB
-
-This will parse the downloaded data, convert it to the canonical data model, and serialize it into the `.lp` format required by LibrePCB. The output will be placed in your LibrePCB workspace.
-
-```bash
-# To convert to LibrePCB files, first have the files downloaded into downloads/
-# Modify main.py with the LCSC ID of interest
-and then run:
-uv run main.py
-
-=== Symbol Data Structure ===
-Symbol shapes count: 43
-
-=== Footprint Data Structure ===
-Footprint shapes count: 131
-
-=== Parsing Symbol ===
-
---- Canonical Symbol (Parsed from EasyEDA) ---
-Symbol: ESP32-C6_C5364646
-  UUID: cfa9cf40-5f9f-40ab-bb08-2df4168a5f3e
-  Prefix: U?
-  Origin: Pt(400.000, 300.000)
-  Dimensions: 15.00 x 28.00 mm
-  Pins (41)
-  Graphics (2)
-
-=== Parsing Footprint ===
-Warning: Unknown EasyEDA layer name 'Ratlines' (id: 9). Mapping to DOCUMENTATION.
-Warning: Unknown EasyEDA layer name 'Multi-Layer' (id: 11). Mapping to DOCUMENTATION.
-Warning: Unknown EasyEDA layer name '3DModel' (id: 19). Mapping to DOCUMENTATION.
-Warning: Unknown EasyEDA layer name 'DRCError' (id: DRCError). Mapping to DOCUMENTATION.
-
---- Canonical Footprint (Parsed from EasyEDA) ---
-Footprint: QFN-40_L5.0-W5.0-P0.40-TL-EP3.3
-  UUID: b0d5a736-74be-41d6-a029-8cc741e4302b
-  Keywords: Microcontrollers (MCU/MPU/SOC)
-  Pads (41)
-  Graphics (90)
-
-=== Serializing Footprint to LibrePCB ===
-Footprint 'QFN-40_L5.0-W5.0-P0.40-TL-EP3.3' serialized to LibrePCB package: /Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/pkg/b0d5a736-74be-41d6-a029-8cc741e4302b/package.lp
-
-=== Serializing Symbol to LibrePCB ===
-  Consolidating duplicate pin: VDDA3P3
-Symbol 'ESP32-C6_C5364646' serialized to LibrePCB symbol: /Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/sym/cfa9cf40-5f9f-40ab-bb08-2df4168a5f3e/symbol.lp
-  - 40 unique pins (removed 1 duplicates)
-  - Arranged pins on 2.54mm grid
-  - Symbol dimensions (body): 15.00 x 28.00 mm
-
-=== Serializing Component to LibrePCB ===
-Component 'ESP32-C6_C5364646' serialized to LibrePCB component: /Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/cmp/d4e5e068-ea28-45c7-925d-4b6dbabfa970/component.lp
-
-=== Serializing Device to LibrePCB ===
-         - WARNING! Pad 2 without corresponding Pin (removed duplicate)
-Device 'ESP32-C6_C5364646' serialized to LibrePCB component: /Users/fred/LibrePCB-Workspace/data/libraries/local/EasyEDA.lplib/dev/a32088c9-ef07-4d14-89e4-ef39c5bac4f3/device.lp
+# To convert to LibrePCB files run cli.py with the LCSC ID of interest
+uv run cli.py C2040
+CLI - INFO - Starting process for LCSC ID: C2040
+CLI - INFO - Searching for 'C2040'...
+search - INFO - Delegating search for 'C2040' to LCSC engine...
+CLI - INFO - Found exact match: RP2040
+CLI - INFO - Fetching detailed CAD data...
+adapters.easyeda.easyeda_api - INFO - Found cached 3D Model STEP file
+library_manager - INFO - Created library directories for part 0e6097e2-8bd2-4994-b311-687c2df1ea80
+library_manager - INFO -   OK.
+library_manager - INFO - Saving footprint source JSON...
+library_manager - INFO -   OK.
+library_manager - INFO - Saving symbol source JSON...
+library_manager - INFO -   OK.
+workers.footprint_converter - INFO -
+--- Starting Package Generation ---
+2025-07-22 11:08:45,001 - workers.footprint_converter - INFO - Successfully serialized footprint to WebParts.lplib/pkg/39e1b05b-30bd-4c64-a6c9-a1b67d9eb207/package.lp
+2025-07-22 11:08:45,001 - workers.footprint_converter - INFO - --- Package Generation Succeeded ---
+Check 'WebParts.lplib/pkg/39e1b05b-30bd-4c64-a6c9-a1b67d9eb207' for non-approved messages...
+  Approved messages: 0
+  Non-approved messages: 10
+workers.footprint_converter - INFO - Updated footprint manifest with 10 validation issues.
+svg_utils - INFO - Overlaid 2 alignment crosshairs on WebParts.lplib/pkg/39e1b05b-30bd-4c64-a6c9-a1b67d9eb207/footprint.png
+library_manager - INFO - --- Starting Symbol Generation ---
+workers.symbol_converter - INFO - Parsing EasyEDA symbol data...
+workers.symbol_converter - INFO - Consolidating duplicate pins for LibrePCB symbol file...
+workers.symbol_converter - INFO -   Consolidating duplicate pin: IOVDD
+workers.symbol_converter - INFO -   Consolidating duplicate pin: DVDD
+library_manager - INFO - --- Symbol Generation Succeeded, now rendering and checking ---
+workers.element_renderer - INFO - CLI Output:
+Check 'WebParts.lplib/sym/c2754a5d-ac40-4cb1-b757-213b56759c67' for non-approved messages...
+  Approved messages: 0
+  Non-approved messages: 1
+workers.element_renderer - INFO - Converting WebParts.lplib/sym/c2754a5d-ac40-4cb1-b757-213b56759c67/rendered.svg to WebParts.lplib/sym/c2754a5d-ac40-4cb1-b757-213b56759c67/rendered.png...
+library_manager - INFO - Updated manifest for symbol c2754a5d-ac40-4cb1-b757-213b56759c67 with 1 issues and status approved.
+library_manager - INFO - --- Starting Component Generation ---
+workers.component_converter - INFO - --- Starting Component Generation ---
+workers.component_converter - INFO - Component UUID: bf949642-8df0-4e94-85aa-3fab19059dfd
+workers.component_converter - INFO - Successfully generated component 'RP2040'.
+library_manager - INFO - --- Starting Device Generation ---
+workers.device_converter - INFO - --- Starting Device Generation ---
+workers.device_converter - INFO - Successfully generated device 'RP2040'.
+library_manager - INFO - ✅ Successfully added 'RP2040' to library.
+CLI - INFO - ✅ Process completed successfully!
 
 ```
 
