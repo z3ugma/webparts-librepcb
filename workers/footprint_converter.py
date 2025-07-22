@@ -30,7 +30,7 @@ def process_footprint_complete(
     # Step 1: Generate the footprint
     logger.info("\n--- Starting Package Generation ---")
     success, parsed_package, offset_x, offset_y = _generate_footprint_file(
-        raw_cad_data, str(pkg_dir)
+        raw_cad_data, str(pkg_dir), library_part
     )
 
     if not success or not parsed_package:
@@ -52,7 +52,7 @@ def process_footprint_complete(
 
 
 def _generate_footprint_file(
-    raw_cad_data: Dict[str, Any], pkg_dir_str: str
+    raw_cad_data: Dict[str, Any], pkg_dir_str: str, library_part: LibraryPart
 ) -> Tuple[bool, Optional[Package], float, float]:
     """
     Parses raw EasyEDA data and serializes it to a LibrePCB S-expression file.
@@ -65,7 +65,7 @@ def _generate_footprint_file(
 
     try:
         parser = EasyEDAFootprintParser()
-        package, offset_x, offset_y = parser.parse_easyeda_json(raw_cad_data)
+        package, offset_x, offset_y = parser.parse_easyeda_json(raw_cad_data, library_part)
         if not package:
             logger.error("Failed to parse footprint data from EasyEDA JSON.")
             return False, None, 0.0, 0.0
@@ -74,6 +74,7 @@ def _generate_footprint_file(
 
         parent_dir = Path(*Path(pkg_dir_str).parts[0:-1])
         package.serialize(parent_dir)
+
         logger.info(f"Successfully serialized footprint to {pkg_dir_str}/package.lp")
 
         return True, package, offset_x, offset_y

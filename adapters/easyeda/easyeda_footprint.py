@@ -63,6 +63,7 @@ from librepcb_parts_generator.entities.package import (
     StrokeWidth,
 )
 
+from models.library_part import LibraryPart
 from constants import DEFAULT_VERSION
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,11 @@ class EasyEDAFootprintParser:
             "componentpolaritylayer": Layer("brd_documentation"),
             "componentshapelayer": Layer("top_package_outlines"),
             "document": Layer("brd_documentation"),
+            "hole": Layer("brd_documentation"),
+            "drcerror": Layer("brd_documentation"),
+            "ratlines": Layer("brd_documentation"),
+            "mechanical": Layer("brd_documentation"),
+            "3dmodel": Layer("brd_documentation"),
             "leadshapelayer": Layer("brd_documentation"),
             "multi-layer": Layer("top_cu"),
             "toplayer": Layer("top_cu"),
@@ -1011,7 +1017,7 @@ class EasyEDAFootprintParser:
         return None, None
 
     def parse_easyeda_json(
-        self, easyeda_data: Dict[str, Any]
+        self, easyeda_data: Dict[str, Any], library_part: LibraryPart
     ) -> Tuple[Optional[Package], float, float]:
         if "packageDetail" not in easyeda_data:
             logger.error("Error: 'packageDetail' not found in EasyEDA data.")
@@ -1036,7 +1042,7 @@ class EasyEDAFootprintParser:
             or head.get("name")
             or package_detail.get("title", "UnknownFootprint")
         )
-        pkg_uuid = str(UUID(head["uuid"]))
+        pkg_uuid = library_part.footprint.uuid
         fp_uuid = str(uuid4())
 
         author = head.get("c_para", {}).get("Contributor")
@@ -1102,7 +1108,7 @@ class EasyEDAFootprintParser:
             keywords=Keywords(keywords),
             author=Author(author),
             version=Version(DEFAULT_VERSION),
-            generated_by=GeneratedBy(generated_by),
+            generated_by=GeneratedBy(f"webparts:lcsc:{easyeda_data.get('lcsc_id', 'unknown')}"),
         )
 
         # --- Shapes ---

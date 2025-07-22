@@ -77,6 +77,9 @@ def main():
             logger.error("❌ Process failed. Check logs for details.")
             sys.exit(1)
 
+    except KeyboardInterrupt:
+        logger.info("\nProcess interrupted by user. Exiting.")
+        sys.exit(0)
     except Exception as e:
         logger.critical(f"An unhandled exception occurred: {e}", exc_info=True)
         sys.exit(1)

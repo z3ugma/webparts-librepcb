@@ -7,7 +7,6 @@ from uuid import UUID
 import requests
 
 import constants as const
-from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
 from adapters.search_engine import SearchEngine, Vendor
 from models.common_info import FootprintInfo, ImageInfo
 from models.search_result import SearchResult
@@ -266,18 +265,9 @@ class EasyEDAApi(SearchEngine):
             )
 
             if raw_symbol_uuid:
-                symbol_uuid_obj = UUID(raw_symbol_uuid)
-                search_result.symbol.uuid = str(symbol_uuid_obj)
-                search_result.component.uuid = str(
-                    create_derived_uuidv4(symbol_uuid_obj, "component")
-                )
-                device_uuid_obj = create_derived_uuidv4(symbol_uuid_obj, "device")
-                search_result.device.uuid = str(device_uuid_obj)
-                search_result.uuid = str(device_uuid_obj)
-
+                search_result.symbol.uuid = str(UUID(raw_symbol_uuid))
             if raw_package_uuid:
-                package_uuid_obj = UUID(raw_package_uuid)
-                search_result.footprint.uuid = str(package_uuid_obj)
+                search_result.footprint.uuid = str(UUID(raw_package_uuid))
 
         except Exception as e:
             logger.error(

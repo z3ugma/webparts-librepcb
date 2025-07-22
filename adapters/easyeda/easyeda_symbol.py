@@ -74,8 +74,8 @@ class EasyEDASymbolParser:
                 attrs[key] = value
         return attrs
 
-    def _parse_pin(self, pin_str: str) -> Optional[Dict[str, str]]:
-        """Parse EasyEDA pin string into a dictionary of raw string values."""
+    def _parse_pin(self, pin_str: str) -> Optional[Tuple[str, str, Pin]]:
+        """Parse EasyEDA pin string into a tuple of (pin_name, pin_number, Pin)."""
         segments = pin_str.split("^^")
         if len(segments) < 7:
             return None
@@ -84,6 +84,10 @@ class EasyEDASymbolParser:
         if len(config_parts) < 8:
             return None
 
+        # Extract pin number (designator)
+        pin_number = config_parts[3]
+
+        # Extract pin name
         name_parts = segments[3].split("~")
         pin_name = name_parts[4] if len(name_parts) > 4 else ""
 
@@ -95,8 +99,6 @@ class EasyEDASymbolParser:
         pin_line = path_parts[-1]
         distance = ceil(float(pin_line) * UNIT_SCALE)
 
-        # for pin_data in normalized_pins:
-        #     # Apply center offset before scaling to millimeters
         final_x = x * GRID_SIZE
         final_y = y * GRID_SIZE
         final_distance = abs(GRID_SIZE * distance)
@@ -111,7 +113,7 @@ class EasyEDASymbolParser:
             name_position=NamePosition(final_distance + GRID_SIZE * 0.5, 0),
             name_rotation=NameRotation(0),
         )
-        return pin
+        return pin_name, pin_number, pin
 
     # def _parse_line(
     #     self, parts: List[str], offset_x: float, offset_y: float
@@ -337,10 +339,11 @@ class EasyEDASymbolParser:
             version=Version("0.1.0"),
             created=Created(datetime.now()),
             deprecated=Deprecated(False),
-            generated_by=GeneratedBy("easyeda2librepcb"),
+            generated_by=GeneratedBy(f"webparts:lcsc:{easyeda_data.get('lcsc_id', 'unknown')}"),
             categories=[Category("e29f0cb3-ef6d-4203-b854-d75150cbae0b")],
         )
 
+        pin_data_list = []
         for shape_str in shapes:
             parts = shape_str.split("~")
             if not parts:
@@ -349,9 +352,11 @@ class EasyEDASymbolParser:
             shape_type = parts[0]
 
             if shape_type == "P":  # Pin
-                pin = self._parse_pin(shape_str)
-                if pin:
-                    symbol.add_pin(pin)
+                pin_data = self._parse_pin(shape_str)
+                if pin_data:
+                    pin_data_list.append(pin_data)
+                    _, _, pin_object = pin_data
+                    symbol.add_pin(pin_object)
 
             # elif shape_type == "L":  # Line
             #     line = self._parse_line(parts)
@@ -397,7 +402,7 @@ class EasyEDASymbolParser:
         for text in texts:
             symbol.add_text(text)
 
-        return symbol
+        return symbol, pin_data_list
 
     def _add_name_value_labels(self, polygons: List[Polygon]) -> Tuple[Text]:
         OFFSET = 1.2

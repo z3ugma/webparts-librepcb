@@ -107,15 +107,17 @@ class LibraryManager(QObject):
             logger.info("  OK.")
 
             # --- Process Footprint (Generate, Render, Check, Align) ---
-            process_footprint_complete(
+            footprint_success, package = process_footprint_complete(
                 copy.deepcopy(search_result.raw_cad_data), library_part, part_pkg_dir
             )
 
             # --- Process Symbol (Generate, Render, Check) ---
             logger.info("--- Starting Symbol Generation ---")
-            if generate_symbol(
-                copy.deepcopy(search_result.raw_cad_data), str(part_sym_dir)
-            ):
+            symbol, pin_mapping = generate_symbol(
+                copy.deepcopy(search_result.raw_cad_data),
+                str(part_sym_dir),
+            )
+            if symbol:
                 logger.info(
                     "--- Symbol Generation Succeeded, now rendering and checking ---"
                 )
@@ -126,19 +128,37 @@ class LibraryManager(QObject):
                     LibrePCBElement.SYMBOL, library_part.symbol.uuid, issues
                 )
             else:
+                symbol = None
                 logger.error("--- Symbol Generation Failed ---")
 
-            # # --- Process Component (Generate, Render, Check) ---
-            # logger.info("--- Starting Component Generation ---")
-            # process_component_complete(
-            #     copy.deepcopy(search_result.raw_cad_data), library_part
-            # )
+            # --- Process Component (Generate, Render, Check) ---
+            logger.info("--- Starting Component Generation ---")
+            component = None
+            if footprint_success and symbol and package:
+                from workers.component_converter import process_component_complete
 
-            # # --- Process Device (Generate, Render, Check) ---
-            # logger.info("--- Starting Device Generation ---")
-            # process_device_complete(
-            #     copy.deepcopy(search_result.raw_cad_data), library_part
-            # )
+                component = process_component_complete(
+                    library_part, package, symbol
+                )
+            if not component:
+                logger.error(
+                    "--- Component Generation Failed: Cannot proceed to device generation. ---"
+                )
+                return library_part
+
+            # --- Process Device (Generate, Render, Check) ---
+            logger.info("--- Starting Device Generation ---")
+            if package and pin_mapping and component:
+                from workers.device_converter import process_device_complete
+
+                process_device_complete(
+                    library_part, package, component, pin_mapping
+                )
+            else:
+                logger.error(
+                    "--- Device Generation Failed: Missing required elements ---"
+                )
+                return library_part
 
             # --- Finalize: Create Part Manifest ---
             part_manifest_path = library_part.manifest_path
@@ -148,6 +168,9 @@ class LibraryManager(QObject):
             logger.info(f"✅ Successfully added '{library_part.part_name}' to library.")
             return library_part
 
+        except KeyboardInterrupt:
+            logger.info("\nProcess interrupted by user during library add. Exiting.")
+            raise
         except Exception as e:
             logger.error(f"❌ Failed to add part to library: {e}", exc_info=True)
             # Re-raise the exception to be caught by the worker
@@ -273,74 +296,93 @@ class LibraryManager(QObject):
             logger.error(f"Error reading status manifest {wp_path}: {e}")
             return StatusValue.ERROR
 
-    def set_footprint_manifest_status(
-        self, library_part: LibraryPart, new_status: StatusValue
-    ) -> None:
-        """Update the approval status of a footprint and save it to its manifest."""
-        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(library_part.footprint.uuid)
-        if not manifest_path or not manifest_path.exists():
-            logger.error(
-                f"Manifest for footprint {library_part.footprint.uuid} not found."
-            )
-            return
 
-        try:
-            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
-            manifest.status = new_status
-            manifest_path.write_text(manifest.model_dump_json(indent=2))
-            logger.info(
-                f"Updated footprint {library_part.footprint.uuid} status to {new_status.name}."
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to update manifest for footprint {library_part.footprint.uuid}: {e}"
-            )
 
-    def set_symbol_manifest_status(
-        self, library_part: LibraryPart, new_status: StatusValue
-    ) -> None:
-        """Update the approval status of a symbol and save it to its manifest."""
-        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(library_part.symbol.uuid)
-        if not manifest_path or not manifest_path.exists():
-            logger.error(f"Manifest for symbol {library_part.symbol.uuid} not found.")
-            return
-
-        try:
-            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
-            manifest.status = new_status
-            manifest_path.write_text(manifest.model_dump_json(indent=2))
-            logger.info(
-                f"Updated symbol {library_part.symbol.uuid} status to {new_status.name}."
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to update manifest for symbol {library_part.symbol.uuid}: {e}"
-            )
+    def _find_part_by_lcsc_id(self, lcsc_id: str) -> Optional[LibraryPart]:
+        """Finds an existing library part by scanning .part.wp manifests."""
+        if not WEBPARTS_DIR.exists():
+            return None
+        for part_dir in WEBPARTS_DIR.iterdir():
+            if not part_dir.is_dir():
+                continue
+            manifest_path = part_dir / WebPartsFilename.PART_MANIFEST.value
+            if manifest_path.exists():
+                try:
+                    # Load only the necessary fields to avoid full hydration
+                    with open(manifest_path, "r") as f:
+                        data = json.load(f)
+                    if data.get("lcsc_id") == lcsc_id:
+                        logger.info(f"Found existing part manifest for {lcsc_id}")
+                        # Return a minimal part object, just need the UUID
+                        return LibraryPart.model_validate(data)
+                except (json.JSONDecodeError, IOError):
+                    continue
+        return None
 
     def _map_search_result_to_library_part(
         self, search_result: SearchResult
     ) -> LibraryPart:
-        """Performs a one-way mapping from a search result to a library part."""
+        """
+        Performs a one-way mapping from a search result to a library part,
+        assigning random UUIDs only when elements don't already exist.
+        """
         import uuid as uuid_module
-
-        from adapters.librepcb.librepcb_uuid import create_derived_uuidv4
+        from adapters.librepcb.generated_by import find_element_by_generated_by
+        from models.elements import LibrePCBElement
 
         search_dict = search_result.model_dump()
-        if not search_dict.get("uuid"):
-            search_dict["uuid"] = (
-                search_result.uuid or f"search-{search_result.lcsc_id}"
+
+        # Step 1: Get-or-create for the main LibraryPart (our internal manifest).
+        logger.info("--> Searching for existing part manifest...")
+        existing_part = self._find_part_by_lcsc_id(search_result.lcsc_id)
+        logger.info("<-- Finished searching for existing part manifest.")
+        if existing_part:
+            main_uuid = uuid_module.UUID(existing_part.uuid)
+            logger.info(
+                f"Found existing part for LCSC ID {search_result.lcsc_id}, "
+                f"re-using main UUID {main_uuid}"
+            )
+        else:
+            main_uuid = uuid_module.uuid4()
+            logger.info(
+                f"No existing part found for LCSC ID {search_result.lcsc_id}, "
+                f"assigning new main UUID {main_uuid}"
             )
 
-        # Generate UUIDs from the main part UUID
-        if search_dict.get("uuid"):
-            main_uuid_str = search_dict["uuid"]
-            # Convert string to UUID object
-            main_uuid = uuid_module.UUID(main_uuid_str)
-            search_dict["component"]["uuid"] = str(
-                create_derived_uuidv4(main_uuid, "component")
-            )
-            # Device UUID is the same as the main part UUID
-            search_dict["device"]["uuid"] = main_uuid_str
+        # Step 2: Get-or-create for the Component element UUID by checking .lp files
+        logger.info("--> Searching for existing component...")
+        existing_comp_uuid = find_element_by_generated_by(
+            LibrePCBElement.COMPONENT.dir, "webparts:lcsc", search_result.lcsc_id
+        )
+        logger.info("<-- Finished searching for existing component.")
+        if existing_comp_uuid:
+            component_uuid = existing_comp_uuid
+            logger.info(f"Found existing component, using UUID {component_uuid}")
+        else:
+            component_uuid = uuid_module.uuid4()
+            logger.info(f"No existing component found, assigning new UUID {component_uuid}")
+
+        # Step 3: Get-or-create for the Device element UUID (which is the same as the main part UUID)
+        logger.info("--> Searching for existing device...")
+        existing_device_uuid = find_element_by_generated_by(
+            LibrePCBElement.DEVICE.dir, "webparts:lcsc", search_result.lcsc_id
+        )
+        logger.info("<-- Finished searching for existing device.")
+        if existing_device_uuid:
+            device_uuid = existing_device_uuid
+            logger.info(f"Found existing device, using UUID {device_uuid}")
+        else:
+            device_uuid = main_uuid  # A new device uses the new main_uuid
+            logger.info(f"No existing device found, assigning new UUID {device_uuid}")
+
+        # Step 4: Assemble the final part object
+        main_uuid_str = str(device_uuid) # The main UUID is the device UUID
+        search_dict["uuid"] = main_uuid_str
+        search_dict["device"]["uuid"] = main_uuid_str
+        search_dict["component"]["uuid"] = str(component_uuid)
+        # Preserve the stable UUIDs from the SearchResult for footprint and symbol
+        search_dict["footprint"]["uuid"] = search_result.footprint.uuid
+        search_dict["symbol"]["uuid"] = search_result.symbol.uuid
 
         return LibraryPart.model_validate(search_dict)
 
@@ -460,104 +502,49 @@ class LibraryManager(QObject):
             f"Updated manifest for {element.value} {uuid} with {len(reconciled_messages)} issues and status {existing_manifest.status.value}."
         )
 
-    def update_footprint_approval_status(
-        self, part: LibraryPart, msg_index: int, is_approved: bool
+    def set_footprint_manifest_status(
+        self, library_part: LibraryPart, new_status: StatusValue
     ) -> None:
-        """
-        Handles the state change of an approval checkbox for a footprint.
-        """
-        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
-        try:
-            if manifest_path.exists():
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-            else:
-                logger.error(f"Manifest not found at {manifest_path}")
-                return
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+        """Update the approval status of a footprint and save it to its manifest."""
+        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(library_part.footprint.uuid)
+        if not manifest_path or not manifest_path.exists():
+            logger.error(
+                f"Manifest for footprint {library_part.footprint.uuid} not found."
+            )
             return
 
-        if not (0 <= msg_index < len(manifest.validation)):
-            logger.error(f"Cannot update approval for invalid index {msg_index}")
-            return
-
-        manifest.validation[msg_index].is_approved = is_approved
-
         try:
+            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
+            manifest.status = new_status
             manifest_path.write_text(manifest.model_dump_json(indent=2))
             logger.info(
-                f"Updated approval for message {msg_index} to {'Approved' if is_approved else 'Not Approved'}."
+                f"Updated footprint {library_part.footprint.uuid} status to {new_status.name}."
             )
         except Exception as e:
-            logger.error(f"Error writing footprint manifest {manifest_path}: {e}")
-
-    def update_symbol_approval_status(
-        self, part: LibraryPart, msg_index: int, is_approved: bool
-    ) -> None:
-        """
-        Handles the state change of an approval checkbox for a symbol.
-        """
-        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(part.symbol.uuid)
-        try:
-            if manifest_path.exists():
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-            else:
-                logger.error(f"Manifest not found at {manifest_path}")
-                return
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
-            return
-
-        if not (0 <= msg_index < len(manifest.validation)):
-            logger.error(f"Cannot update approval for invalid index {msg_index}")
-            return
-
-        manifest.validation[msg_index].is_approved = is_approved
-
-        try:
-            with open(manifest_path, "w") as f:
-                f.write(manifest.model_dump_json(indent=2))
-            logger.info(
-                f"Successfully persisted symbol approval state for message {msg_index} to {is_approved}."
-            )
-        except IOError as e:
             logger.error(
-                f"Error writing symbol manifest {manifest_path}: {e}", exc_info=True
+                f"Failed to update manifest for footprint {library_part.footprint.uuid}: {e}"
             )
 
-        """
-        Handles the state change of an approval checkbox.
-        """
-        manifest_path = LibrePCBElement.PACKAGE.get_wp_path(part.footprint.uuid)
-        try:
-            if manifest_path.exists():
-                manifest = ElementManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
-            else:
-                logger.error(f"Manifest not found at {manifest_path}")
-                return
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse manifest {manifest_path}: {e}")
+    def set_symbol_manifest_status(
+        self, library_part: LibraryPart, new_status: StatusValue
+    ) -> None:
+        """Update the approval status of a symbol and save it to its manifest."""
+        manifest_path = LibrePCBElement.SYMBOL.get_wp_path(library_part.symbol.uuid)
+        if not manifest_path or not manifest_path.exists():
+            logger.error(f"Manifest for symbol {library_part.symbol.uuid} not found.")
             return
 
-        if not (0 <= msg_index < len(manifest.validation)):
-            logger.error(f"Cannot update approval for invalid index {msg_index}")
-            return
-
-        # Update the in-memory manifest
-        manifest.validation[msg_index].is_approved = is_approved
-
-        # Write the entire, updated manifest back to disk
         try:
-            with open(manifest_path, "w") as f:
-                f.write(manifest.model_dump_json(indent=2))
+            manifest = ElementManifest.model_validate_json(manifest_path.read_text())
+            manifest.status = new_status
+            manifest_path.write_text(manifest.model_dump_json(indent=2))
             logger.info(
-                f"Successfully persisted approval state for message {msg_index} to {is_approved}."
+                f"Updated symbol {library_part.symbol.uuid} status to {new_status.name}."
             )
-        except IOError as e:
-            logger.error(f"Error writing manifest {manifest_path}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(
+                f"Failed to update manifest for symbol {library_part.symbol.uuid}: {e}"
+            )
+
+
+

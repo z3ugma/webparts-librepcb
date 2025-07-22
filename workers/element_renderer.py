@@ -67,7 +67,7 @@ def render_and_check_element(
         )
 
         output = result.stdout + result.stderr
-        logger.debug(f"CLI Output:\n{output}")
+        logger.info(f"CLI Output:\n{output}")
 
         if result.returncode != 0 and "Finished with errors!" not in output:
             logger.error(f"LibrePCB-CLI failed unexpectedly:\n{output}")
