@@ -32,4 +32,5 @@ required-environments = [
 ]
 
 [tool.uv.sources]
-librepcb-parts-generator = { path = "/Users/fred/librepcb_parts_generator", editable = true }
+#librepcb-parts-generator = { path = "/Users/fred/librepcb_parts_generator", editable = true }
+librepcb-parts-generator = { git = "https://github.com/z3ugma/librepcb-parts-generator.git", branch = "reorganize" }
